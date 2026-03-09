@@ -8,45 +8,53 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>CERT-SISTEMA-AUDITORIA</title>
     
-    <!-- SDK de Firebase para Red Global de Brigadistas -->
+    <!-- Librería Excel Multioja (.xlsx) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <!-- SDK de Firebase para Red Global -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getFirestore, collection, addDoc, onSnapshot, getDocs, doc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
-        // Configuración de infraestructura inyectada por el entorno
-        const firebaseConfig = JSON.parse(__firebase_config);
+        // CONFIGURACIÓN REAL INTEGRADA
+        const firebaseConfig = {
+            apiKey: "AIzaSyBvDO1Guh6vnVIiOciqqEQ1jZe0Q5zThwM",
+            authDomain: "cert-tecate.firebaseapp.com",
+            projectId: "cert-tecate",
+            storageBucket: "cert-tecate.firebasestorage.app",
+            messagingSenderId: "802566499801",
+            appId: "1:802566499801:web:f1821be505a9ae87f0fdc8",
+            measurementId: "G-GRNK5F107Q"
+        };
+
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
         const auth = getAuth(app);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'cert-tecate-global-db';
+        const appId = 'cert-tecate-2026'; 
 
-        // Variables globales para la red
         window.certCloud = { db, auth, appId, collection, addDoc, getDocs };
 
-        // Autenticación según Regla 3
-        const initAuth = async () => {
+        // Protocolo de conexión automática
+        const conectarRed = async () => {
             try {
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
-            } catch (e) { console.error("Falla de red CERT:", e); }
+                await signInAnonymously(auth);
+            } catch (e) { console.error("Error de conexión:", e); }
         };
-        initAuth();
+        conectarRed();
 
         onAuthStateChanged(auth, (user) => {
+            const statusEl = document.getElementById('cloud-status');
             if (user) {
-                document.getElementById('cloud-status').innerText = "CONECTADO A LA RED";
-                document.getElementById('cloud-status').className = "bg-emerald-600 px-3 py-0.5 rounded text-[8px] font-black";
+                statusEl.innerText = "RED ACTIVA";
+                statusEl.className = "bg-emerald-600 px-3 py-0.5 rounded text-[8px] font-black uppercase";
                 
-                // Listener de registros globales (Ruta según Regla 1)
+                // Listener global para el contador y el Excel
                 const recordsRef = collection(db, 'artifacts', appId, 'public', 'data', 'registros_rio');
                 onSnapshot(recordsRef, (snap) => {
                     document.getElementById('sync-counter').innerText = snap.size;
                     window.globalRecords = snap.docs.map(d => d.data());
-                }, (err) => console.error("Error de permisos Firestore", err));
+                }, (err) => console.log("Esperando inicio de registros..."));
             }
         });
     </script>
@@ -54,48 +62,40 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap');
-        
         body { font-family: 'Inter', sans-serif; background-color: #f1f5f9; color: #000; margin: 0; padding: 5px; -webkit-tap-highlight-color: transparent; }
         .container-main { max-width: 950px; margin: 10px auto; background: white; border-radius: 24px; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.08); border: 1.5px solid #e2e8f0; }
         
-        /* AJUSTE PARA PDF Y NOMBRE AUTOMÁTICO */
         @media print {
             @page { size: letter; margin: 0.5cm; }
             .no-print { display: none !important; }
-            body { background: white; padding: 0; margin: 0; }
+            body { background: white; padding: 0; }
             .page-break { page-break-after: always; }
             .container-main { border: none; width: 100%; max-width: 100%; margin: 0; border-radius: 0; box-shadow: none; }
-            textarea { border: 1px solid #cbd5e0 !important; font-size: 10pt !important; height: auto !important; overflow: hidden !important; border-radius: 8px !important; }
+            textarea { border: 1px solid #cbd5e0 !important; font-size: 10pt !important; height: auto !important; overflow: hidden !important; }
             .section-block { border: 1.5px solid #e2e8f0; margin-bottom: 8px; padding: 10px !important; break-inside: avoid; border-radius: 12px !important; }
             .section-header { background: #1e293b !important; color: white !important; -webkit-print-color-adjust: exact; border-radius: 12px 12px 0 0 !important; font-size: 10pt !important; padding: 8px 15px !important; }
             .signature-box { border-top: 2px solid #000; margin-top: 30px; display: block !important; }
-            .field-input { border: 1px solid #eee !important; background: transparent !important; padding: 4px !important; font-size: 10pt !important; }
-            input[type="radio"] { appearance: none; border: 1.5px solid #000; width: 12px; height: 12px; border-radius: 50%; }
+            .field-input { border: 1px solid #eee !important; background: transparent !important; padding: 4px !important; }
+            input[type="radio"] { appearance: none; border: 1.5px solid #000; width: 14px; height: 14px; border-radius: 50%; }
             input[type="radio"]:checked { background: #000; }
         }
 
-        /* DISEÑO ALTO CONTRASTE */
         .field-label { display: block; font-weight: 800; font-size: 0.65rem; color: #1e293b; text-transform: uppercase; margin-bottom: 0.2rem; letter-spacing: 0.05em; }
-        .field-input { width: 100%; background-color: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 0.6rem; font-size: 0.95rem; color: #000; font-weight: 600; }
+        .field-input { width: 100%; background-color: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 0.6rem; font-size: 0.95rem; color: #000; font-weight: 600; transition: all 0.2s; }
         .input-locked { background-color: #f1f5f9 !important; color: #64748b !important; border: 2px dashed #cbd5e0 !important; pointer-events: none; opacity: 0.8; }
-        
-        .section-header { background-color: #1e293b; color: #fff; padding: 12px 18px; font-weight: 900; text-transform: uppercase; font-size: 0.7rem; border-radius: 14px 14px 0 0; display: flex; align-items: center; gap: 10px; }
+        .section-header { background-color: #1e293b; color: #fff; padding: 12px 18px; font-weight: 900; text-transform: uppercase; font-size: 0.7rem; border-radius: 14px 14px 0 0; display: flex; align-items: center; justify-content: space-between; }
         
         .sidebar-actions { position: fixed; top: 50%; right: 10px; transform: translateY(-50%); z-index: 2000; display: flex; flex-direction: column; gap: 8px; }
         .btn-action { width: 75px; height: 70px; background: white; border: 1.5px solid #e2e8f0; border-radius: 18px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 0.55rem; font-weight: 900; color: #1e293b; box-shadow: 0 4px 12px rgba(0,0,0,0.06); transition: 0.2s; border: none; }
-        .btn-action:active { transform: scale(0.9); }
 
         .table-container { overflow-x: auto; margin-top: 0; border: 1.5px solid #e2e8f0; border-radius: 0 0 16px 16px; border-top: none; }
         table { width: 100%; border-collapse: collapse; min-width: 600px; }
         th { background: #f8fafc; padding: 6px; font-size: 8px; text-transform: uppercase; color: #475569; border-bottom: 1.5px solid #e2e8f0; }
         td { padding: 6px 12px; border-top: 1px solid #f1f5f9; font-size: 0.75rem; font-weight: 600; color: #000; }
-        input[type="radio"] { width: 24px; height: 24px; cursor: pointer; accent-color: #1e293b; }
+        input[type="radio"] { width: 22px; height: 22px; cursor: pointer; accent-color: #1e293b; }
 
-        /* CÁMARA PURAMENTE VISUAL */
         .camera-trigger { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; cursor: pointer; padding: 12px; background: #fff; border: 2px dashed #1e293b; border-radius: 16px; transition: 0.2s; min-height: 80px; position: relative; overflow: hidden; }
         .camera-trigger:hover { background: #f0f9ff; border-style: solid; border-color: #2563eb; }
-        .camera-trigger span { font-size: 1.6rem; }
-        .camera-trigger b { font-size: 0.55rem; text-transform: uppercase; color: #1e293b; text-align: center; }
         .preview-img { width: 100%; height: 160px; object-fit: cover; border-radius: 12px; display: none; margin-top: 6px; border: 1.5px solid #e2e8f0; }
         .hidden-input { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
 
@@ -103,9 +103,10 @@
         .modal-content { background: white; padding: 25px; border-radius: 24px; max-width: 500px; width: 100%; border: 2px solid #e2e8f0; text-align: center; }
         
         .auto-textarea { width: 100%; background: #fcfcfc; padding: 10px; font-size: 0.95rem; border: 1.5px solid #e2e8f0; border-radius: 12px; min-height: 80px; font-weight: 500; }
-        .id-badge { background: #000; color: #fff; padding: 10px 30px; border-radius: 99px; font-weight: 900; font-size: 1.4rem; letter-spacing: 0.1em; display: inline-block; border: 3px solid #3b82f6; }
+        .id-badge { background: #000; color: #fff; padding: 5px 20px; border-radius: 99px; font-weight: 900; font-size: 1.1rem; letter-spacing: 0.05em; display: inline-block; border: 2px solid #3b82f6; }
+        .folio-top-badge { background: #1e293b; color: #fff; padding: 10px 35px; border-radius: 99px; font-weight: 900; font-size: 1.3rem; letter-spacing: 0.1em; display: inline-block; box-shadow: 0 4px 15px rgba(0,0,0,0.3); border: 2px solid #fff; }
         .btn-decision { width: 100%; padding: 18px; border-radius: 16px; font-weight: 900; text-transform: uppercase; font-size: 0.95rem; margin-bottom: 12px; border: none; cursor: pointer; transition: 0.2s; }
-        .btn-maps { background: #34a853; color: white; padding: 10px; border-radius: 10px; font-size: 0.6rem; font-weight: 900; text-transform: uppercase; margin-top: 10px; display: none; width: 100%; text-align: center; }
+        .section-time-badge { background: #3b82f6; color: white; padding: 2px 8px; border-radius: 6px; font-size: 9px; font-weight: 800; display: none; }
     </style>
 </head>
 <body class="bg-slate-100">
@@ -115,7 +116,7 @@
             <span class="text-[9px] font-black uppercase tracking-tighter">● RED BRIGADA CERT TECATE</span>
             <span id="cloud-status" class="bg-slate-500 px-3 py-0.5 rounded text-[8px]">SIN CONEXIÓN</span>
         </div>
-        <span class="text-[9px] font-bold uppercase">Registros en Nube: <span id="sync-counter" class="bg-blue-600 px-2 rounded">0</span></span>
+        <span class="text-[9px] font-bold uppercase">Sincronizados Global: <span id="sync-counter" class="bg-blue-600 px-2 rounded">0</span></span>
     </div>
 
     <!-- MODAL FINALIZACIÓN -->
@@ -123,32 +124,33 @@
         <div class="modal-content shadow-2xl">
             <div class="text-5xl mb-4">🚀</div>
             <h2 class="text-2xl font-black text-slate-900 mb-2 uppercase tracking-tighter">Tramo Finalizado</h2>
-            <p class="text-sm text-slate-500 mb-8 px-4">El PDF se guardará localmente. Los datos se sincronizarán con la base global de los 50 usuarios.<br><b>¿Qué desea realizar ahora?</b></p>
-            <button onclick="handleFinalizeChoice('next')" class="btn-decision bg-[#1e293b] text-white border-b-8 border-slate-950">➕ GUARDAR Y ABRIR NUEVO</button>
-            <button onclick="handleFinalizeChoice('total')" class="btn-decision bg-blue-600 text-white border-b-8 border-blue-800">📊 FINALIZAR JORNADA Y DESCARGAR CSV</button>
-            <button onclick="closeFinalizeModal()" class="mt-4 text-xs font-bold text-slate-400 uppercase underline">Seguir editando este registro</button>
+            <p class="text-sm text-slate-500 mb-8 px-4">El PDF se descargará con su Folio Único. Los datos se enviarán a la base de datos central de la brigada.</p>
+            <button onclick="handleFinalizeChoice('next')" class="btn-decision bg-[#1e293b] text-white border-b-8 border-slate-950 uppercase">➕ GUARDAR Y NUEVO REGISTRO</button>
+            <button onclick="handleFinalizeChoice('total')" class="btn-decision bg-blue-600 text-white border-b-8 border-blue-800 uppercase">📊 FINALIZAR JORNADA Y EXCEL</button>
+            <button onclick="closeFinalizeModal()" class="mt-4 text-xs font-bold text-slate-400 uppercase underline">Seguir editando</button>
         </div>
     </div>
 
     <div class="sidebar-actions no-print">
-        <button type="button" onclick="exportMasterCSV()" class="btn-action bg-blue-700 !text-white"><span class="text-2xl">📊</span><span>CSV TOTAL</span></button>
+        <button type="button" onclick="exportMasterExcel()" class="btn-action bg-blue-700 !text-white"><span class="text-2xl">📊</span><span>EXCEL</span></button>
         <button type="button" onclick="confirmReset()" class="btn-action bg-slate-50"><span class="text-2xl">🧹</span><span>REINICIAR</span></button>
     </div>
 
     <div class="container-main">
         <header class="bg-white p-6 md:p-10 text-center border-b-[10px] border-slate-900">
             <h1 class="text-2xl font-black uppercase tracking-tighter text-slate-900 leading-none mb-4">Comité Especial del Río Tecate</h1>
-            <div id="inspectorIDDisplay" class="id-badge">ID: --</div>
-            <p class="text-[10px] text-slate-500 uppercase font-black mt-4 tracking-[0.4em]">Cédula de Sincronización en Red (50 Slots)</p>
+            <div class="space-y-4">
+                <div id="folioDisplay" class="folio-top-badge italic uppercase tracking-widest">Generando Folio...</div>
+            </div>
+            <p class="text-[10px] text-slate-500 uppercase font-black mt-6 tracking-[0.4em]">Protocolo de Diagnóstico Digital (CERT-ID)</p>
         </header>
 
         <form id="diagnosticoForm" class="p-4 md:p-10 space-y-4">
             
-            <!-- BLOQUE I: IDENTIDAD PERSISTENTE -->
             <section class="bg-slate-50 p-6 rounded-3xl border border-slate-200 section-block">
                 <div class="flex justify-between items-center mb-6 border-b border-slate-200 pb-3">
                     <h3 class="font-black text-xs uppercase text-slate-800 tracking-widest italic">I. Registro de Brigadista</h3>
-                    <div id="session-badge" class="hidden text-[9px] font-black text-blue-700 bg-blue-100 px-3 py-1 rounded-lg uppercase">Usuario Validado</div>
+                    <div id="session-badge" class="hidden text-[9px] font-black text-blue-700 bg-blue-100 px-3 py-1 rounded-lg uppercase tracking-widest">Validado</div>
                 </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -157,43 +159,42 @@
                         <input type="text" id="inspectorName" name="inspector" class="field-input" placeholder="Nombre completo" onblur="assignInspectorID()">
                     </div>
                     <div>
-                        <label class="field-label">Carpeta Drive Destino</label>
-                        <input type="text" id="targetFolder" name="carpeta" class="field-input" placeholder="Ej. SECCIÓN_NORTE" oninput="handleIdentity()">
+                        <label class="field-label">Lugar / Tramo</label>
+                        <input type="text" id="targetFolder" name="lugar_tramo" class="field-input" placeholder="Ej. Puente Encinos" oninput="handleIdentity()">
                     </div>
                     <div>
                         <label class="field-label">Brigada</label>
-                        <input type="text" id="equipoName" name="equipo" class="field-input" placeholder="Equipo 01" oninput="handleIdentity()">
+                        <input type="text" id="equipoName" name="equipo" class="field-input" placeholder="Brigada 10" oninput="handleIdentity()">
                     </div>
                 </div>
 
                 <div class="grid grid-cols-2 gap-4 mt-4">
-                    <div class="bg-white p-2 rounded-xl border border-slate-200 flex items-center justify-center gap-3"><label class="field-label !mb-0 text-blue-600">FECHA</label><input type="date" id="inputFecha" name="fecha" class="font-bold text-xs border-none bg-transparent" readonly></div>
-                    <div class="bg-white p-2 rounded-xl border border-slate-200 flex items-center justify-center gap-3"><label class="field-label !mb-0 text-blue-600">HORA</label><input type="time" id="inputHora" name="hora" class="font-black text-base border-none bg-transparent" readonly></div>
+                    <div class="bg-blue-50 p-3 rounded-xl border border-blue-100 flex flex-col items-center justify-center text-center">
+                        <label class="field-label !mb-0 text-blue-800">FECHA DE CAPTURA</label>
+                        <input type="text" id="inputFecha" name="fecha_auto" class="font-black text-sm border-none bg-transparent text-center text-blue-900" readonly>
+                    </div>
+                    <div class="bg-blue-50 p-3 rounded-xl border border-blue-100 flex flex-col items-center justify-center text-center">
+                        <label class="field-label !mb-0 text-blue-800">HORA DE INICIO</label>
+                        <input type="text" id="inputHora" name="hora_auto" class="font-black text-sm border-none bg-transparent text-center text-blue-900" readonly>
+                    </div>
                 </div>
 
-                <!-- GPS - SE ACTIVA CON HTTPS EN GITHUB -->
-                <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 bg-white p-5 rounded-3xl border-2 border-blue-100 shadow-sm">
-                    <div class="flex flex-col justify-center text-center">
-                        <label class="field-label mb-4 underline decoration-blue-600 decoration-2 font-black uppercase">GPS Táctico</label>
+                <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 bg-white p-5 rounded-3xl border-2 border-blue-100 shadow-sm text-center">
+                    <div class="flex flex-col justify-center">
+                        <label class="field-label mb-4 underline decoration-blue-600 font-black uppercase">Localización GPS</label>
                         <button type="button" onclick="getPreciseGPS()" id="btnGPS" class="no-print bg-slate-900 text-white w-full py-5 rounded-2xl text-xs font-black shadow-lg hover:bg-black transition-all">📍 FIJAR COORDENADAS</button>
-                        <input type="text" id="displayCoords" name="gps_coords" class="text-sm font-mono font-black text-blue-900 bg-transparent border-none w-full text-center mt-4" placeholder="ESPERANDO HARDWARE...">
+                        <input type="text" id="displayCoords" name="gps_coords" class="text-sm font-mono font-black text-blue-900 bg-transparent border-none w-full text-center mt-4" placeholder="ESPERANDO SATÉLITES...">
                         <input type="hidden" id="coords" name="coordenadas">
-                        <a id="btnLinkMaps" href="#" target="_blank" class="btn-maps no-print">🗺️ Verificar en Google Maps</a>
                     </div>
                     <div class="border-l-0 md:border-l-2 border-slate-50 pl-0 md:pl-4">
-                        <label class="camera-trigger no-print">
-                            <span>📸</span><b>Foto Entorno GPS</b>
-                            <input type="file" accept="image/*" capture="environment" onchange="prevImg(this, 'gps_loc')" class="hidden-input">
-                        </label>
+                        <label class="camera-trigger no-print"><span>📸</span><b>Foto Entorno</b><input type="file" accept="image/*" capture="environment" onchange="prevImg(this, 'gps_loc')" class="hidden-input"></label>
                         <img id="p_gps_loc" class="preview-img !h-32 mx-auto">
                     </div>
                 </div>
             </section>
 
-            <!-- TABLAS DINÁMICAS (TODOS LOS INDICADORES) -->
             <div id="tablasContenedor" class="space-y-4"></div>
 
-            <!-- HALLAZGOS Y MARCHA -->
             <section class="page-break section-block border-2 rounded-3xl overflow-hidden bg-white shadow-sm">
                 <div class="section-header"><span>6.</span> Hallazgos Críticos y Puntos Ciegos</div>
                 <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4 mb-4" id="guiaContenedor"></div>
@@ -203,18 +204,14 @@
                 </div>
             </section>
 
-            <!-- CIERRE TÉCNICO -->
             <section class="section-block border-2 rounded-3xl overflow-hidden bg-white shadow-sm p-6 space-y-6">
-                <div class="section-header"><span>7.</span> Conclusiones y Acuerdos</div>
-                <div><label class="field-label mb-2">Problemáticas y Riesgos Detectados</label><textarea name="problemas" class="auto-textarea" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea></div>
-                <div><label class="field-label mb-2">Propuestas e Intervenciones Sugeridas</label><textarea name="oportunidades" class="auto-textarea" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea></div>
+                <div class="section-header"><span>7.</span> Conclusiones de Auditoría</div>
+                <div><label class="field-label mb-2">Problemáticas Detectadas</label><textarea name="problemas" class="auto-textarea" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea></div>
+                <div><label class="field-label mb-2">Propuestas e Intervenciones</label><textarea name="oportunidades" class="auto-textarea" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea></div>
             </section>
 
-            <!-- BOTÓN MAESTRO FINALIZAR -->
             <section class="pt-6 pb-40 page-break text-center px-4">
-                <button type="button" onclick="openFinalizeModal()" class="no-print bg-[#1e293b] text-white w-full max-w-md py-10 rounded-3xl shadow-2xl font-black text-2xl active:scale-95 border-b-8 border-slate-950">
-                    🏁 FINALIZAR REGISTRO
-                </button>
+                <button type="button" onclick="openFinalizeModal()" class="no-print bg-[#1e293b] text-white w-full max-w-md py-10 rounded-3xl shadow-2xl font-black text-2xl active:scale-95 border-b-8 border-slate-950 uppercase">🏁 FINALIZAR REGISTRO</button>
                 <div id="visual-signature" class="hidden signature-box mt-20 pt-10 border-t-4 border-slate-900 bg-white">
                     <div id="sign-name-ui" class="text-3xl font-black italic mb-2 uppercase text-slate-900"></div>
                     <p class="text-xs font-black text-slate-600 uppercase tracking-widest border-y py-2 mb-2">Validación de Brigada CERT - Firma Digital</p>
@@ -224,20 +221,21 @@
 
             <input type="hidden" id="inputFolio" name="folio">
             <input type="hidden" id="assignedID" name="inspector_id">
+            <input type="hidden" id="assignedInitials" name="inspector_initials">
         </form>
     </div>
 
     <script>
         const secciones = [
-            { titulo: "Infraestructura Urbana", prefix: "infra", icon: "🏗️", headers: ["B", "R", "M", "N/E"], items: ["Flujo del agua", "Contaminación (Basura)", "Sedimentación", "Obstrucciones", "Estabilidad del cauce", "Canalización del río", "Muros de contención", "Estado de estructuras", "Descargas pluviales", "Drenaje pluvial conectado", "Cantidad de puentes", "Estado de puentes", "Seguridad de cruces"] },
-            { titulo: "Medio Ambiente", prefix: "amb", icon: "🌿", headers: ["Alt", "Med", "Baj", "N/E"], items: ["Vegetación en cauce", "Vegetación ribereña", "Presencia de fauna", "Áreas naturales", "Sombra/Temp.", "Riesgo inundación", "Erosión suelo", "Acumulación residuos", "Infiltración"] },
-            { titulo: "Desarrollo Social", prefix: "soc", icon: "👥", headers: ["Alta", "Med", "Baja", "N/E"], items: ["Viviendas zona federal", "Construcciones irregulares", "Invasión borde río", "Uso informal suelo", "Personas situación calle", "Espacios abandonados", "Áreas comunitarias"] },
-            { titulo: "Seguridad Ciudadana", prefix: "seg", icon: "🛡️", headers: ["B", "R", "M", "N/E"], items: ["Calles cercanas", "Banquetas/Accesos", "Alumbrado público", "Equipamiento urbano", "Vigilancia de zona"] }
+            { titulo: "Infraestructura Urbana", prefix: "infra", icon: "🏗️", headers: ["B", "R", "M", "N/E"], items: ["Flujo del agua", "Basura", "Sedimentación", "Obstrucciones", "Estabilidad del cauce", "Canalización del río", "Muros de contención", "Estado de estructuras", "Descargas pluviales", "Puentes", "Seguridad de cruces"] },
+            { titulo: "Medio Ambiente", prefix: "amb", icon: "🌿", headers: ["Alt", "Med", "Baj", "N/E"], items: ["Vegetación en cauce", "Vegetación ribereña", "Fauna", "Áreas naturales", "Riesgo inundación", "Erosión suelo", "Residuos", "Infiltración"] },
+            { titulo: "Desarrollo Social", prefix: "soc", icon: "👥", headers: ["Alta", "Med", "Baja", "N/E"], items: ["Viviendas zona federal", "Construcciones irregulares", "Invasión borde río", "Personas situación calle", "Espacios abandonados", "Áreas comunitarias"] },
+            { titulo: "Seguridad Ciudadana", prefix: "seg", icon: "🛡️", headers: ["B", "R", "M", "N/E"], items: ["Alumbrado público", "Equipamiento urbano", "Vigilancia de zona", "Accesos peatonales"] }
         ];
 
         const guiaPuntos = ["Estado Físico Predominante", "Uso Social del Espacio", "Seguridad y Vigilancia", "Manejo de Residuos"];
 
-        // Lógica de Identidad Global (Auto-asignación 1-50)
+        // Lógica de ID Global (Auto-asignación 01-50 en la nube)
         async function assignInspectorID() {
             const nameInput = document.getElementById('inspectorName');
             const name = nameInput.value.trim();
@@ -246,21 +244,19 @@
             const initials = name.split(' ').filter(p => p.length > 0).map(n => n[0]).join('').toUpperCase().substring(0, 3);
             const { db, appId, collection, getDocs, addDoc } = window.certCloud;
             
-            // Ruta de brigadistas (Regla 1)
             const brigRef = collection(db, 'artifacts', appId, 'public', 'data', 'brigadistas');
             const snap = await getDocs(brigRef);
             
-            let assigned = null;
-            snap.forEach(d => { if (d.data().name.toLowerCase() === name.toLowerCase()) assigned = d.data().id; });
+            let assignedNum = null;
+            snap.forEach(d => { if (d.data().name.toLowerCase() === name.toLowerCase()) assignedNum = d.data().num; });
 
-            if (!assigned) {
-                const nextNum = String(snap.size + 1).padStart(2, '0');
-                assigned = `${initials}-${nextNum}`;
-                await addDoc(brigRef, { name, id: assigned, timestamp: new Date().toISOString() });
+            if (!assignedNum) {
+                assignedNum = String(snap.size + 1).padStart(2, '0');
+                await addDoc(brigRef, { name, id: `${initials}-${assignedNum}`, num: assignedNum, timestamp: new Date().toISOString() });
             }
 
-            document.getElementById('assignedID').value = assigned;
-            document.getElementById('inspectorIDDisplay').innerText = `ID: ${assigned}`;
+            document.getElementById('assignedID').value = assignedNum;
+            document.getElementById('assignedInitials').value = initials;
             handleIdentity();
         }
 
@@ -269,26 +265,46 @@
                 inspector: document.getElementById('inspectorName').value, 
                 equipo: document.getElementById('equipoName').value, 
                 folder: document.getElementById('targetFolder').value, 
-                id: document.getElementById('assignedID').value 
+                num: document.getElementById('assignedID').value,
+                initials: document.getElementById('assignedInitials').value
             };
-            localStorage.setItem('cert_session_v10', JSON.stringify(data));
+            localStorage.setItem('cert_prod_final_2026', JSON.stringify(data));
             updateFolio();
         }
 
+        function updateClock() {
+            const now = new Date();
+            document.getElementById('inputFecha').value = now.toLocaleDateString('es-MX', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, "-");
+            document.getElementById('inputHora').value = now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+        }
+
         function loadSession() {
-            const config = JSON.parse(localStorage.getItem('cert_session_v10') || '{}');
+            const config = JSON.parse(localStorage.getItem('cert_prod_final_2026') || '{}');
             if (config.inspector) {
                 document.getElementById('inspectorName').value = config.inspector;
                 document.getElementById('targetFolder').value = config.folder || "";
                 document.getElementById('equipoName').value = config.equipo || "";
-                document.getElementById('assignedID').value = config.id || "";
-                document.getElementById('inspectorIDDisplay').innerText = `ID: ${config.id || '--'}`;
-                if (parseInt(localStorage.getItem('cert_count_v10') || 1) > 1) {
-                    ['inspectorName', 'targetFolder', 'equipoName'].forEach(id => document.getElementById(id).classList.add('input-locked'));
-                    document.getElementById('session-badge')?.classList.remove('hidden');
+                document.getElementById('assignedID').value = config.num || "";
+                document.getElementById('assignedInitials').value = config.initials || "";
+                if (parseInt(localStorage.getItem('cert_count_vfinal_2026') || 1) > 1) {
+                    ['inspectorName', 'targetFolder', 'equipoName'].forEach(id => {
+                        const el = document.getElementById(id);
+                        if(el) el.classList.add('input-locked');
+                    });
                 }
             }
             updateFolio();
+            updateClock();
+        }
+
+        function stampSectionTime(prefix) {
+            const timeInput = document.querySelector(`input[name="${prefix}_start_time"]`);
+            if (timeInput && !timeInput.value) {
+                const now = new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+                timeInput.value = now;
+                const badge = document.getElementById(`badge_${prefix}`);
+                if (badge) { badge.innerText = `INICIO: ${now}`; badge.style.display = 'inline-block'; }
+            }
         }
 
         function getPreciseGPS() {
@@ -298,18 +314,15 @@
                     const coords = `${p.coords.latitude.toFixed(6)}, ${p.coords.longitude.toFixed(6)}`;
                     document.getElementById('coords').value = coords;
                     document.getElementById('displayCoords').value = coords;
-                    document.getElementById('inputHora').value = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-                    document.getElementById('btnLinkMaps').style.display = 'block';
-                    document.getElementById('btnLinkMaps').href = `https://www.google.com/maps?q=${coords}`;
                     btn.innerText = "📍 FIJADO"; btn.classList.replace('bg-slate-900', 'bg-green-700');
                 },
-                (err) => { alert("Active GPS y use HTTPS en GitHub."); btn.innerText = "📍 REINTENTAR"; },
+                (err) => { alert("Error GPS. Use HTTPS en GitHub."); btn.innerText = "📍 REINTENTAR"; },
                 { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
             );
         }
 
         function openFinalizeModal() {
-            if (!document.getElementById('assignedID').value) { alert("⚠️ REGISTRE SU NOMBRE PARA OBTENER ID."); return; }
+            if (!document.getElementById('assignedID').value) { alert("⚠️ REGISTRE SU NOMBRE."); return; }
             document.getElementById('finalizeModal').style.display = 'flex';
         }
 
@@ -318,64 +331,75 @@
         async function handleFinalizeChoice(choice) {
             const name = document.getElementById('inspectorName').value;
             const folio = document.getElementById('inputFolio').value;
-            const folder = document.getElementById('targetFolder').value;
-            const inspectorID = document.getElementById('assignedID').value;
+            const now = new Date();
+            const dateLocal = now.toLocaleDateString('es-MX');
+            const timeLocal = now.toLocaleTimeString('es-MX');
 
             document.getElementById('sign-name-ui').innerText = name;
-            document.getElementById('sign-id-ui').innerText = "CERT-ID: " + inspectorID;
+            document.getElementById('sign-id-ui').innerText = `ID: ${folio} | ${dateLocal} ${timeLocal}`;
             document.getElementById('visual-signature').classList.remove('hidden');
 
             const oldTitle = document.title;
-            document.title = `${folder}_${folio}`; // TRUCO PARA NOMBRE DEL PDF
+            document.title = folio; // Cambia el nombre del archivo PDF
             closeFinalizeModal();
 
-            // Sincronización en Nube (Regla 3 Guard)
-            if (window.certRed && window.certRed.auth.currentUser) {
+            if (window.certCloud && window.certCloud.auth.currentUser) {
                 const formData = new FormData(document.getElementById('diagnosticoForm'));
-                const data = { timestamp: new Date().toISOString(), inspector: name, inspector_id: inspectorID, folio: folio };
+                const data = { timestamp_utc: now.toISOString(), fecha_captura: dateLocal, hora_captura_final: timeLocal, folio: folio };
                 formData.forEach((v, k) => { if(!(v instanceof File)) data[k] = v; });
-                try {
-                    await window.certRed.addDoc(window.certRed.collection(window.certRed.db, 'artifacts', window.certRed.appId, 'public', 'data', 'registros_rio'), data);
-                } catch (e) { console.error("Error nube", e); }
+                try { await window.certCloud.addDoc(window.certCloud.collection(window.certCloud.db, 'artifacts', window.certCloud.appId, 'public', 'data', 'registros_rio'), data); } 
+                catch (e) { console.error("Error nube", e); }
             }
             
             window.print();
             setTimeout(() => {
                 document.title = oldTitle;
                 if (choice === 'next') {
-                    let count = parseInt(localStorage.getItem('cert_count_v10') || 1);
-                    localStorage.setItem('cert_count_v10', count + 1);
+                    let count = parseInt(localStorage.getItem('cert_count_vfinal_2026') || 1);
+                    localStorage.setItem('cert_count_vfinal_2026', count + 1);
                     location.reload();
-                } else {
-                    exportMasterCSV();
-                    location.reload();
-                }
-            }, 1000);
+                } else { exportMasterExcel(); location.reload(); }
+            }, 1500);
         }
 
-        function exportMasterCSV() {
+        // EXCEL MULTIHOJA OPTIMIZADO PARA FILTRADO
+        function exportMasterExcel() {
             const data = window.globalRecords || [];
             if (data.length === 0) return;
-            const headers = Object.keys(data[0]).join(",");
-            const rows = data.map(r => Object.values(r).map(v => `"${String(v).replace(/"/g, '""')}"`).join(","));
-            const content = "\uFEFF" + headers + "\n" + rows.join("\n");
-            const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement("a");
-            link.href = URL.createObjectURL(blob);
-            link.download = `BASE_DATOS_CERT_GLOBAL_${new Date().toISOString().slice(0,10)}.csv`;
-            link.click();
+            const wb = XLSX.utils.book_new();
+
+            const genData = data.map(r => ({ "Folio": r.folio, "Fecha": r.fecha_captura, "Inspector": r.inspector, "Tramo": r.lugar_tramo, "GPS": r.gps_coords }));
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(genData), "General");
+            
+            secciones.forEach(sec => {
+                const secData = data.map(r => {
+                    const row = { "Folio": r.folio, "Hora Inicio": r[`${sec.prefix}_start_time`] };
+                    sec.items.forEach((item, idx) => { row[item] = r[`${sec.prefix}_v_${idx}`] || "N/E"; });
+                    return row;
+                });
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(secData), sec.titulo.substring(0, 31));
+            });
+
+            const closure = data.map(r => ({ "Folio": r.folio, "Problemáticas": r.problemas, "Propuestas": r.oportunidades }));
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(closure), "Notas Finales");
+
+            XLSX.writeFile(wb, `MACRO_CERT_REPORT_${new Date().toISOString().slice(0,10)}.xlsx`);
         }
 
         function updateFolio() {
-            const id = document.getElementById('assignedID').value || "XXX-00";
-            const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-            const count = String(localStorage.getItem('cert_count_v10') || 1).padStart(3, '0');
-            const folio = `CERT-${date}-${id}-${count}`;
+            const folioBadge = document.getElementById('folioDisplay');
+            if (!folioBadge) return;
+            const initials = document.getElementById('assignedInitials').value || "XXX";
+            const brigNum = document.getElementById('assignedID').value || "00";
+            const now = new Date();
+            const dateStr = now.getFullYear().toString() + (now.getMonth() + 1).toString().padStart(2, '0') + now.getDate().toString().padStart(2, '0');
+            const count = String(localStorage.getItem('cert_count_vfinal_2026') || 1).padStart(3, '0');
+            const folio = `CERT-${dateStr}-${initials}-${brigNum}-${count}`;
             document.getElementById('inputFolio').value = folio;
-            document.getElementById('folioDisplay').innerText = folio;
+            folioBadge.innerText = folio;
         }
 
-        function confirmReset() { if (confirm("⚠️ ¿BORRAR SESIÓN Y MEMORIA?")) { localStorage.clear(); location.reload(); } }
+        function confirmReset() { if (confirm("⚠️ ¿REINICIAR BRIGADA?")) { localStorage.clear(); location.reload(); } }
         function prevImg(input, id) {
             const img = document.getElementById(`p_${id}`);
             if (input.files && input.files[0]) {
@@ -391,16 +415,27 @@
                 const bNum = sIdx + 2;
                 const sectionDiv = document.createElement('section');
                 sectionDiv.className = "rounded-2xl overflow-hidden border border-slate-200 bg-white shadow-sm section-block";
-                let rowsHtml = sec.items.map((item, idx) => `<tr><td class="font-bold text-slate-800">${item}</td><td class="text-center"><input type="radio" name="${sec.prefix}_v_${idx}" value="B"></td><td class="text-center"><input type="radio" name="${sec.prefix}_v_${idx}" value="R"></td><td class="text-center"><input type="radio" name="${sec.prefix}_v_${idx}" value="M"></td><td class="text-center"><input type="radio" name="${sec.prefix}_v_${idx}" value="N/E"></td></tr>`).join('');
-                sectionDiv.innerHTML = `<div class="section-header"><span>${bNum}.</span> ${sec.icon} ${sec.titulo}</div><div class="table-container"><table><thead><tr><th class="text-left px-5">Indicador Técnico</th><th>B / Alt</th><th>R / Med</th><th>M / Baj</th><th>N/E</th></tr></thead><tbody>${rowsHtml}</tbody></table></div><div class="p-4 bg-slate-50/20"><div class="photo-grid grid grid-cols-2 md:grid-cols-4 gap-4">${[1,2,3,4].map(n => `<div class="photo-slot"><label class="camera-trigger no-print"><span>📸</span><b>Evidencia ${n}</b><input type="file" accept="image/*" capture="environment" onchange="prevImg(this, '${sec.prefix}_${n}')" class="hidden-input"></label><img id="p_${sec.prefix}_${n}" class="preview-img"></div>`).join('')}</div></div>`;
+                let rowsHtml = sec.items.map((item, idx) => `
+                    <tr>
+                        <td class="font-bold text-slate-800">${item}</td>
+                        <td class="text-center"><input type="radio" name="${sec.prefix}_v_${idx}" value="B" onclick="stampSectionTime('${sec.prefix}')"></td>
+                        <td class="text-center"><input type="radio" name="${sec.prefix}_v_${idx}" value="R" onclick="stampSectionTime('${sec.prefix}')"></td>
+                        <td class="text-center"><input type="radio" name="${sec.prefix}_v_${idx}" value="M" onclick="stampSectionTime('${sec.prefix}')"></td>
+                        <td class="text-center"><input type="radio" name="${sec.prefix}_v_${idx}" value="N/E" onclick="stampSectionTime('${sec.prefix}')"></td>
+                    </tr>`).join('');
+                sectionDiv.innerHTML = `
+                    <div class="section-header">
+                        <div class="flex items-center gap-3"><span>${bNum}.</span> ${sec.icon} ${sec.titulo}</div>
+                        <div id="badge_${sec.prefix}" class="section-time-badge"></div>
+                        <input type="hidden" name="${sec.prefix}_start_time" value="">
+                    </div>
+                    <div class="table-container"><table><thead><tr><th class="text-left px-5">Indicador Técnico</th><th>B / Alt</th><th>R / Med</th><th>M / Baj</th><th>N/E</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>
+                    <div class="p-4 bg-slate-50/20"><div class="photo-grid grid grid-cols-2 md:grid-cols-4 gap-4">${[1,2,3,4].map(n => `<div class="photo-slot"><label class="camera-trigger no-print"><span>📸</span><b>Evidencia ${n}</b><input type="file" accept="image/*" capture="environment" onchange="prevImg(this, '${sec.prefix}_${n}')" class="hidden-input"></label><img id="p_${sec.prefix}_${n}" class="preview-img"></div>`).join('')}</div></div>`;
                 container.appendChild(sectionDiv);
             });
         }
 
         window.onload = () => {
-            const n = new Date();
-            document.getElementById('inputFecha').value = n.toISOString().slice(0, 10);
-            document.getElementById('inputHora').value = n.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
             createTables();
             const guiasCont = document.getElementById('guiaContenedor');
             guiaPuntos.forEach((item, idx) => {
