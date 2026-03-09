@@ -11,10 +11,10 @@
     <!-- Librería Excel Multioja (.xlsx) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
-    <!-- SDK de Firebase para Red Global -->
+    <!-- SDK de Firebase -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getFirestore, collection, addDoc, onSnapshot, getDocs, doc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, onSnapshot, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
         // CONFIGURACIÓN REAL INTEGRADA
@@ -35,13 +35,8 @@
 
         window.certCloud = { db, auth, appId, collection, addDoc, getDocs };
 
-        // Protocolo de conexión automática
-        const conectarRed = async () => {
-            try {
-                await signInAnonymously(auth);
-            } catch (e) { console.error("Error de conexión:", e); }
-        };
-        conectarRed();
+        // Conexión anónima
+        signInAnonymously(auth).catch(e => console.error("Falla de red:", e));
 
         onAuthStateChanged(auth, (user) => {
             const statusEl = document.getElementById('cloud-status');
@@ -49,12 +44,12 @@
                 statusEl.innerText = "RED ACTIVA";
                 statusEl.className = "bg-emerald-600 px-3 py-0.5 rounded text-[8px] font-black uppercase";
                 
-                // Listener global para el contador y el Excel
+                // Ruta pública compartida para los 50 brigadistas
                 const recordsRef = collection(db, 'artifacts', appId, 'public', 'data', 'registros_rio');
                 onSnapshot(recordsRef, (snap) => {
                     document.getElementById('sync-counter').innerText = snap.size;
                     window.globalRecords = snap.docs.map(d => d.data());
-                }, (err) => console.log("Esperando inicio de registros..."));
+                });
             }
         });
     </script>
@@ -71,12 +66,12 @@
             body { background: white; padding: 0; }
             .page-break { page-break-after: always; }
             .container-main { border: none; width: 100%; max-width: 100%; margin: 0; border-radius: 0; box-shadow: none; }
-            textarea { border: 1px solid #cbd5e0 !important; font-size: 10pt !important; height: auto !important; overflow: hidden !important; }
+            textarea { border: 1px solid #cbd5e0 !important; font-size: 10pt !important; height: auto !important; border-radius: 8px !important; }
             .section-block { border: 1.5px solid #e2e8f0; margin-bottom: 8px; padding: 10px !important; break-inside: avoid; border-radius: 12px !important; }
             .section-header { background: #1e293b !important; color: white !important; -webkit-print-color-adjust: exact; border-radius: 12px 12px 0 0 !important; font-size: 10pt !important; padding: 8px 15px !important; }
             .signature-box { border-top: 2px solid #000; margin-top: 30px; display: block !important; }
             .field-input { border: 1px solid #eee !important; background: transparent !important; padding: 4px !important; }
-            input[type="radio"] { appearance: none; border: 1.5px solid #000; width: 14px; height: 14px; border-radius: 50%; }
+            input[type="radio"] { appearance: none; border: 1.5px solid #000; width: 12px; height: 12px; border-radius: 50%; }
             input[type="radio"]:checked { background: #000; }
         }
 
@@ -116,7 +111,7 @@
             <span class="text-[9px] font-black uppercase tracking-tighter">● RED BRIGADA CERT TECATE</span>
             <span id="cloud-status" class="bg-slate-500 px-3 py-0.5 rounded text-[8px]">SIN CONEXIÓN</span>
         </div>
-        <span class="text-[9px] font-bold uppercase">Sincronizados Global: <span id="sync-counter" class="bg-blue-600 px-2 rounded">0</span></span>
+        <span class="text-[9px] font-bold uppercase text-blue-300">Nube Global: <span id="sync-counter" class="bg-blue-600 px-2 rounded text-white">0</span></span>
     </div>
 
     <!-- MODAL FINALIZACIÓN -->
@@ -124,7 +119,7 @@
         <div class="modal-content shadow-2xl">
             <div class="text-5xl mb-4">🚀</div>
             <h2 class="text-2xl font-black text-slate-900 mb-2 uppercase tracking-tighter">Tramo Finalizado</h2>
-            <p class="text-sm text-slate-500 mb-8 px-4">El PDF se descargará con su Folio Único. Los datos se enviarán a la base de datos central de la brigada.</p>
+            <p class="text-sm text-slate-500 mb-8 px-4">El PDF se descargará con su Folio Único. Los datos se sincronizarán con la base global de la brigada.</p>
             <button onclick="handleFinalizeChoice('next')" class="btn-decision bg-[#1e293b] text-white border-b-8 border-slate-950 uppercase">➕ GUARDAR Y NUEVO REGISTRO</button>
             <button onclick="handleFinalizeChoice('total')" class="btn-decision bg-blue-600 text-white border-b-8 border-blue-800 uppercase">📊 FINALIZAR JORNADA Y EXCEL</button>
             <button onclick="closeFinalizeModal()" class="mt-4 text-xs font-bold text-slate-400 uppercase underline">Seguir editando</button>
@@ -142,7 +137,7 @@
             <div class="space-y-4">
                 <div id="folioDisplay" class="folio-top-badge italic uppercase tracking-widest">Generando Folio...</div>
             </div>
-            <p class="text-[10px] text-slate-500 uppercase font-black mt-6 tracking-[0.4em]">Protocolo de Diagnóstico Digital (CERT-ID)</p>
+            <p class="text-[10px] text-slate-500 uppercase font-black mt-6 tracking-[0.4em]">Cédula de Sincronización Automática (Multioja Excel)</p>
         </header>
 
         <form id="diagnosticoForm" class="p-4 md:p-10 space-y-4">
@@ -160,7 +155,7 @@
                     </div>
                     <div>
                         <label class="field-label">Lugar / Tramo</label>
-                        <input type="text" id="targetFolder" name="lugar_tramo" class="field-input" placeholder="Ej. Puente Encinos" oninput="handleIdentity()">
+                        <input type="text" id="targetFolder" name="lugar_tramo" class="field-input" placeholder="Ej. Paso del Águila" oninput="handleIdentity()">
                     </div>
                     <div>
                         <label class="field-label">Brigada</label>
@@ -227,15 +222,14 @@
 
     <script>
         const secciones = [
-            { titulo: "Infraestructura Urbana", prefix: "infra", icon: "🏗️", headers: ["B", "R", "M", "N/E"], items: ["Flujo del agua", "Basura", "Sedimentación", "Obstrucciones", "Estabilidad del cauce", "Canalización del río", "Muros de contención", "Estado de estructuras", "Descargas pluviales", "Puentes", "Seguridad de cruces"] },
-            { titulo: "Medio Ambiente", prefix: "amb", icon: "🌿", headers: ["Alt", "Med", "Baj", "N/E"], items: ["Vegetación en cauce", "Vegetación ribereña", "Fauna", "Áreas naturales", "Riesgo inundación", "Erosión suelo", "Residuos", "Infiltración"] },
-            { titulo: "Desarrollo Social", prefix: "soc", icon: "👥", headers: ["Alta", "Med", "Baja", "N/E"], items: ["Viviendas zona federal", "Construcciones irregulares", "Invasión borde río", "Personas situación calle", "Espacios abandonados", "Áreas comunitarias"] },
-            { titulo: "Seguridad Ciudadana", prefix: "seg", icon: "🛡️", headers: ["B", "R", "M", "N/E"], items: ["Alumbrado público", "Equipamiento urbano", "Vigilancia de zona", "Accesos peatonales"] }
+            { titulo: "Infraestructura Urbana", prefix: "infra", icon: "🏗️", headers: ["B", "R", "M", "N/E"], items: ["Flujo del agua", "Contaminación (Basura)", "Sedimentación", "Obstrucciones", "Estabilidad del cauce", "Canalización del río", "Muros de contención", "Estado de estructuras", "Descargas pluviales", "Cantidad de puentes", "Seguridad de cruces"] },
+            { titulo: "Medio Ambiente", prefix: "amb", icon: "🌿", headers: ["Alt", "Med", "Baj", "N/E"], items: ["Vegetación en cauce", "Vegetación ribereña", "Presencia de fauna", "Áreas naturales", "Sombra/Temp.", "Riesgo inundación", "Erosión suelo", "Acumulación residuos", "Infiltración"] },
+            { titulo: "Desarrollo Social", prefix: "soc", icon: "👥", headers: ["Alta", "Med", "Baja", "N/E"], items: ["Viviendas zona federal", "Construcciones irregulares", "Invasión borde río", "Uso informal suelo", "Personas situación calle", "Espacios abandonados", "Áreas comunitarias"] },
+            { titulo: "Seguridad Ciudadana", prefix: "seg", icon: "🛡️", headers: ["B", "R", "M", "N/E"], items: ["Calles cercanas", "Banquetas/Accesos", "Alumbrado público", "Equipamiento urbano", "Vigilancia de zona"] }
         ];
 
         const guiaPuntos = ["Estado Físico Predominante", "Uso Social del Espacio", "Seguridad y Vigilancia", "Manejo de Residuos"];
 
-        // Lógica de ID Global (Auto-asignación 01-50 en la nube)
         async function assignInspectorID() {
             const nameInput = document.getElementById('inspectorName');
             const name = nameInput.value.trim();
@@ -268,7 +262,7 @@
                 num: document.getElementById('assignedID').value,
                 initials: document.getElementById('assignedInitials').value
             };
-            localStorage.setItem('cert_prod_final_2026', JSON.stringify(data));
+            localStorage.setItem('cert_prod_final_v1', JSON.stringify(data));
             updateFolio();
         }
 
@@ -279,14 +273,14 @@
         }
 
         function loadSession() {
-            const config = JSON.parse(localStorage.getItem('cert_prod_final_2026') || '{}');
+            const config = JSON.parse(localStorage.getItem('cert_prod_final_v1') || '{}');
             if (config.inspector) {
                 document.getElementById('inspectorName').value = config.inspector;
                 document.getElementById('targetFolder').value = config.folder || "";
                 document.getElementById('equipoName').value = config.equipo || "";
                 document.getElementById('assignedID').value = config.num || "";
                 document.getElementById('assignedInitials').value = config.initials || "";
-                if (parseInt(localStorage.getItem('cert_count_vfinal_2026') || 1) > 1) {
+                if (parseInt(localStorage.getItem('cert_count_v1') || 1) > 1) {
                     ['inspectorName', 'targetFolder', 'equipoName'].forEach(id => {
                         const el = document.getElementById(id);
                         if(el) el.classList.add('input-locked');
@@ -316,13 +310,17 @@
                     document.getElementById('displayCoords').value = coords;
                     btn.innerText = "📍 FIJADO"; btn.classList.replace('bg-slate-900', 'bg-green-700');
                 },
-                (err) => { alert("Error GPS. Use HTTPS en GitHub."); btn.innerText = "📍 REINTENTAR"; },
+                (err) => { alert("Error GPS. Use HTTPS en su celular."); btn.innerText = "📍 REINTENTAR"; },
                 { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
             );
         }
 
         function openFinalizeModal() {
-            if (!document.getElementById('assignedID').value) { alert("⚠️ REGISTRE SU NOMBRE."); return; }
+            if (!document.getElementById('assignedID').value) { 
+                alert("⚠️ ESPERE: El sistema está asignando su ID de Brigadista..."); 
+                assignInspectorID();
+                return; 
+            }
             document.getElementById('finalizeModal').style.display = 'flex';
         }
 
@@ -340,7 +338,7 @@
             document.getElementById('visual-signature').classList.remove('hidden');
 
             const oldTitle = document.title;
-            document.title = folio; // Cambia el nombre del archivo PDF
+            document.title = folio; 
             closeFinalizeModal();
 
             if (window.certCloud && window.certCloud.auth.currentUser) {
@@ -355,20 +353,19 @@
             setTimeout(() => {
                 document.title = oldTitle;
                 if (choice === 'next') {
-                    let count = parseInt(localStorage.getItem('cert_count_vfinal_2026') || 1);
-                    localStorage.setItem('cert_count_vfinal_2026', count + 1);
+                    let count = parseInt(localStorage.getItem('cert_count_v1') || 1);
+                    localStorage.setItem('cert_count_v1', count + 1);
                     location.reload();
                 } else { exportMasterExcel(); location.reload(); }
             }, 1500);
         }
 
-        // EXCEL MULTIHOJA OPTIMIZADO PARA FILTRADO
         function exportMasterExcel() {
             const data = window.globalRecords || [];
             if (data.length === 0) return;
             const wb = XLSX.utils.book_new();
 
-            const genData = data.map(r => ({ "Folio": r.folio, "Fecha": r.fecha_captura, "Inspector": r.inspector, "Tramo": r.lugar_tramo, "GPS": r.gps_coords }));
+            const genData = data.map(r => ({ "Folio": r.folio, "Fecha": r.fecha_captura, "Inspector": r.inspector, "ID": r.inspector_initials + "-" + r.inspector_id, "Tramo": r.lugar_tramo, "GPS": r.gps_coords }));
             XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(genData), "General");
             
             secciones.forEach(sec => {
@@ -383,7 +380,7 @@
             const closure = data.map(r => ({ "Folio": r.folio, "Problemáticas": r.problemas, "Propuestas": r.oportunidades }));
             XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(closure), "Notas Finales");
 
-            XLSX.writeFile(wb, `MACRO_CERT_REPORT_${new Date().toISOString().slice(0,10)}.xlsx`);
+            XLSX.writeFile(wb, `MACRO_CERT_MASTER_${new Date().toISOString().slice(0,10)}.xlsx`);
         }
 
         function updateFolio() {
@@ -393,13 +390,13 @@
             const brigNum = document.getElementById('assignedID').value || "00";
             const now = new Date();
             const dateStr = now.getFullYear().toString() + (now.getMonth() + 1).toString().padStart(2, '0') + now.getDate().toString().padStart(2, '0');
-            const count = String(localStorage.getItem('cert_count_vfinal_2026') || 1).padStart(3, '0');
+            const count = String(localStorage.getItem('cert_count_v1') || 1).padStart(3, '0');
             const folio = `CERT-${dateStr}-${initials}-${brigNum}-${count}`;
             document.getElementById('inputFolio').value = folio;
             folioBadge.innerText = folio;
         }
 
-        function confirmReset() { if (confirm("⚠️ ¿REINICIAR BRIGADA?")) { localStorage.clear(); location.reload(); } }
+        function confirmReset() { if (confirm("⚠️ ¿REINICIAR TODO EL DISPOSITIVO?")) { localStorage.clear(); location.reload(); } }
         function prevImg(input, id) {
             const img = document.getElementById(`p_${id}`);
             if (input.files && input.files[0]) {
