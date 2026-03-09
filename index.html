@@ -11,7 +11,7 @@
     <!-- Librería Excel Multioja (.xlsx) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
-    <!-- SDK de Firebase -->
+    <!-- SDK de Firebase para Red Global -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getFirestore, collection, addDoc, onSnapshot, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
@@ -35,16 +35,14 @@
 
         window.certCloud = { db, auth, appId, collection, addDoc, getDocs };
 
-        // Conexión anónima
-        signInAnonymously(auth).catch(e => console.error("Falla de red:", e));
+        signInAnonymously(auth).catch(e => console.error("Error de enlace:", e));
 
         onAuthStateChanged(auth, (user) => {
             const statusEl = document.getElementById('cloud-status');
             if (user) {
                 statusEl.innerText = "RED ACTIVA";
-                statusEl.className = "bg-emerald-600 px-3 py-0.5 rounded text-[8px] font-black uppercase";
+                statusEl.className = "bg-emerald-600 px-3 py-0.5 rounded text-[8px] font-black uppercase text-white";
                 
-                // Ruta pública compartida para los 50 brigadistas
                 const recordsRef = collection(db, 'artifacts', appId, 'public', 'data', 'registros_rio');
                 onSnapshot(recordsRef, (snap) => {
                     document.getElementById('sync-counter').innerText = snap.size;
@@ -57,48 +55,86 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap');
+        
         body { font-family: 'Inter', sans-serif; background-color: #f1f5f9; color: #000; margin: 0; padding: 5px; -webkit-tap-highlight-color: transparent; }
         .container-main { max-width: 950px; margin: 10px auto; background: white; border-radius: 24px; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.08); border: 1.5px solid #e2e8f0; }
         
+        /* ESTILOS DE IMPRESIÓN PARA PDF */
         @media print {
-            @page { size: letter; margin: 0.5cm; }
+            @page { size: letter; margin: 0.8cm; }
             .no-print { display: none !important; }
             body { background: white; padding: 0; }
             .page-break { page-break-after: always; }
             .container-main { border: none; width: 100%; max-width: 100%; margin: 0; border-radius: 0; box-shadow: none; }
-            textarea { border: 1px solid #cbd5e0 !important; font-size: 10pt !important; height: auto !important; border-radius: 8px !important; }
-            .section-block { border: 1.5px solid #e2e8f0; margin-bottom: 8px; padding: 10px !important; break-inside: avoid; border-radius: 12px !important; }
+            
+            textarea { 
+                border: 1px solid #cbd5e0 !important; 
+                font-size: 10pt !important; 
+                height: auto !important; 
+                min-height: 20px !important; 
+                overflow: hidden !important; 
+                resize: none; 
+                width: 100% !important; 
+                display: block !important; 
+                white-space: pre-wrap !important;
+            }
+
+            .section-block { border: 1.5px solid #e2e8f0; margin-bottom: 10px; padding: 12px !important; break-inside: avoid; border-radius: 12px !important; }
             .section-header { background: #1e293b !important; color: white !important; -webkit-print-color-adjust: exact; border-radius: 12px 12px 0 0 !important; font-size: 10pt !important; padding: 8px 15px !important; }
-            .signature-box { border-top: 2px solid #000; margin-top: 30px; display: block !important; }
-            .field-input { border: 1px solid #eee !important; background: transparent !important; padding: 4px !important; }
-            input[type="radio"] { appearance: none; border: 1.5px solid #000; width: 12px; height: 12px; border-radius: 50%; }
-            input[type="radio"]:checked { background: #000; }
+            
+            /* Forzar visualización de Radio Buttons marcados */
+            input[type="radio"] {
+                appearance: none; -webkit-appearance: none;
+                border: 2px solid #000 !important;
+                width: 14px !important; height: 14px !important;
+                border-radius: 50% !important;
+                position: relative;
+                -webkit-print-color-adjust: exact; print-color-adjust: exact;
+            }
+            input[type="radio"]:checked { background-color: #000 !important; border-color: #000 !important; }
+            input[type="radio"]:checked::after {
+                content: ""; position: absolute; top: 2px; left: 2px; width: 6px; height: 6px;
+                border-radius: 50%; background: white !important;
+            }
+
+            .preview-img { 
+                max-height: 4.5in !important; width: auto !important; max-width: 100% !important;
+                object-fit: contain !important; display: block !important; margin: 5px auto !important;
+            }
+            .photo-slot { break-inside: avoid; margin-bottom: 10px; }
+            .signature-box { border-top: 2px solid #000; margin-top: 40px; display: block !important; break-inside: avoid; }
         }
 
+        /* DISEÑO DE INTERFAZ */
         .field-label { display: block; font-weight: 800; font-size: 0.65rem; color: #1e293b; text-transform: uppercase; margin-bottom: 0.2rem; letter-spacing: 0.05em; }
         .field-input { width: 100%; background-color: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 0.6rem; font-size: 0.95rem; color: #000; font-weight: 600; transition: all 0.2s; }
         .input-locked { background-color: #f1f5f9 !important; color: #64748b !important; border: 2px dashed #cbd5e0 !important; pointer-events: none; opacity: 0.8; }
         .section-header { background-color: #1e293b; color: #fff; padding: 12px 18px; font-weight: 900; text-transform: uppercase; font-size: 0.7rem; border-radius: 14px 14px 0 0; display: flex; align-items: center; justify-content: space-between; }
         
-        .sidebar-actions { position: fixed; top: 50%; right: 10px; transform: translateY(-50%); z-index: 2000; display: flex; flex-direction: column; gap: 8px; }
-        .btn-action { width: 75px; height: 70px; background: white; border: 1.5px solid #e2e8f0; border-radius: 18px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 0.55rem; font-weight: 900; color: #1e293b; box-shadow: 0 4px 12px rgba(0,0,0,0.06); transition: 0.2s; border: none; }
+        /* BOTONES FLOTANTES SUPERIOR DERECHA */
+        .sidebar-actions { position: fixed; top: 60px; right: 10px; z-index: 2000; display: flex; flex-direction: column; gap: 8px; }
+        .btn-action { width: 75px; height: 70px; background: white; border: 1.5px solid #e2e8f0; border-radius: 18px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 0.5rem; font-weight: 900; color: #1e293b; box-shadow: 0 4px 12px rgba(0,0,0,0.1); border: none; }
+        .btn-action:active { transform: scale(0.9); }
 
         .table-container { overflow-x: auto; margin-top: 0; border: 1.5px solid #e2e8f0; border-radius: 0 0 16px 16px; border-top: none; }
         table { width: 100%; border-collapse: collapse; min-width: 600px; }
         th { background: #f8fafc; padding: 6px; font-size: 8px; text-transform: uppercase; color: #475569; border-bottom: 1.5px solid #e2e8f0; }
         td { padding: 6px 12px; border-top: 1px solid #f1f5f9; font-size: 0.75rem; font-weight: 600; color: #000; }
-        input[type="radio"] { width: 22px; height: 22px; cursor: pointer; accent-color: #1e293b; }
+        
+        input[type="radio"] { width: 22px; height: 22px; cursor: pointer; accent-color: #1e293b; border: 2px solid #cbd5e0; border-radius: 50%; }
 
         .camera-trigger { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; cursor: pointer; padding: 12px; background: #fff; border: 2px dashed #1e293b; border-radius: 16px; transition: 0.2s; min-height: 80px; position: relative; overflow: hidden; }
         .camera-trigger:hover { background: #f0f9ff; border-style: solid; border-color: #2563eb; }
-        .preview-img { width: 100%; height: 160px; object-fit: cover; border-radius: 12px; display: none; margin-top: 6px; border: 1.5px solid #e2e8f0; }
+        .camera-trigger span { font-size: 1.6rem; }
+        
+        .preview-img { width: 100%; height: auto; max-height: 350px; object-fit: contain; background: #f1f5f9; border-radius: 12px; display: none; margin-top: 8px; border: 1.5px solid #e2e8f0; }
         .hidden-input { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
 
         .modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.95); display: none; align-items: center; justify-content: center; z-index: 5000; padding: 15px; backdrop-filter: blur(8px); }
-        .modal-content { background: white; padding: 25px; border-radius: 24px; max-width: 500px; width: 100%; border: 2px solid #e2e8f0; text-align: center; }
+        .modal-content { background: white; padding: 25px; border-radius: 24px; max-width: 500px; width: 100%; border: 2px solid #e2e8f0; text-align: center; max-height: 90vh; overflow-y: auto; }
         
-        .auto-textarea { width: 100%; background: #fcfcfc; padding: 10px; font-size: 0.95rem; border: 1.5px solid #e2e8f0; border-radius: 12px; min-height: 80px; font-weight: 500; }
-        .id-badge { background: #000; color: #fff; padding: 5px 20px; border-radius: 99px; font-weight: 900; font-size: 1.1rem; letter-spacing: 0.05em; display: inline-block; border: 2px solid #3b82f6; }
+        .auto-textarea { width: 100%; background: #fcfcfc; padding: 12px; font-size: 0.95rem; border: 1.5px solid #e2e8f0; border-radius: 12px; min-height: 80px; font-weight: 500; resize: none; overflow: hidden; display: block; }
+        
         .folio-top-badge { background: #1e293b; color: #fff; padding: 10px 35px; border-radius: 99px; font-weight: 900; font-size: 1.3rem; letter-spacing: 0.1em; display: inline-block; box-shadow: 0 4px 15px rgba(0,0,0,0.3); border: 2px solid #fff; }
         .btn-decision { width: 100%; padding: 18px; border-radius: 16px; font-weight: 900; text-transform: uppercase; font-size: 0.95rem; margin-bottom: 12px; border: none; cursor: pointer; transition: 0.2s; }
         .section-time-badge { background: #3b82f6; color: white; padding: 2px 8px; border-radius: 6px; font-size: 9px; font-weight: 800; display: none; }
@@ -106,7 +142,7 @@
 </head>
 <body class="bg-slate-100">
 
-    <div class="no-print bg-[#1e293b] text-white px-5 py-2 flex justify-between items-center border-b-2 border-blue-600">
+    <div class="no-print bg-[#1e293b] text-white px-5 py-2 flex justify-between items-center border-b-2 border-blue-600 sticky top-0 z-[1000]">
         <div class="flex items-center gap-3">
             <span class="text-[9px] font-black uppercase tracking-tighter">● RED BRIGADA CERT TECATE</span>
             <span id="cloud-status" class="bg-slate-500 px-3 py-0.5 rounded text-[8px]">SIN CONEXIÓN</span>
@@ -119,25 +155,42 @@
         <div class="modal-content shadow-2xl">
             <div class="text-5xl mb-4">🚀</div>
             <h2 class="text-2xl font-black text-slate-900 mb-2 uppercase tracking-tighter">Tramo Finalizado</h2>
-            <p class="text-sm text-slate-500 mb-8 px-4">El PDF se descargará con su Folio Único. Los datos se sincronizarán con la base global de la brigada.</p>
+            <p class="text-sm text-slate-500 mb-8 px-4">El PDF se guardará con su Folio Único. Los datos y notas de texto se enviarán al Excel Macro Global.</p>
             <button onclick="handleFinalizeChoice('next')" class="btn-decision bg-[#1e293b] text-white border-b-8 border-slate-950 uppercase">➕ GUARDAR Y NUEVO REGISTRO</button>
             <button onclick="handleFinalizeChoice('total')" class="btn-decision bg-blue-600 text-white border-b-8 border-blue-800 uppercase">📊 FINALIZAR JORNADA Y EXCEL</button>
             <button onclick="closeFinalizeModal()" class="mt-4 text-xs font-bold text-slate-400 uppercase underline">Seguir editando</button>
         </div>
     </div>
 
+    <!-- MODAL MANUAL DE USUARIO -->
+    <div id="manualModal" class="modal-overlay no-print">
+        <div class="modal-content shadow-2xl !text-left">
+            <h2 class="text-xl font-black mb-4 uppercase border-b-4 border-blue-600 pb-2">Manual del Brigadista</h2>
+            <div class="space-y-4 text-sm font-medium text-slate-700">
+                <p><strong>1. Identidad:</strong> Escribe tu nombre al inicio para obtener tu ID único (01-50).</p>
+                <p><strong>2. GPS:</strong> Presiona "Fijar Coordenadas" al llegar al tramo. Toma la foto de ubicación para validez legal.</p>
+                <p><strong>3. Guardar PDF:</strong> Al finalizar, elige "Guardar como PDF" en el menú de impresión. El sistema pone el nombre por ti.</p>
+                <p><strong>4. Notas:</strong> Escribe detalles en "Problemáticas". Estas notas aparecerán íntegras en el Excel de coordinación.</p>
+                <p><strong>5. Reiniciar:</strong> El botón rojo borra todo para empezar una jornada nueva desde el folio 001.</p>
+            </div>
+            <button onclick="closeManual()" class="w-full mt-8 py-4 bg-[#1e293b] text-white font-black rounded-xl uppercase">Entendido</button>
+        </div>
+    </div>
+
     <div class="sidebar-actions no-print">
+        <button type="button" onclick="openManual()" class="btn-action bg-emerald-600 !text-white"><span class="text-2xl">📖</span><span>MANUAL</span></button>
         <button type="button" onclick="exportMasterExcel()" class="btn-action bg-blue-700 !text-white"><span class="text-2xl">📊</span><span>EXCEL</span></button>
-        <button type="button" onclick="confirmReset()" class="btn-action bg-slate-50"><span class="text-2xl">🧹</span><span>REINICIAR</span></button>
+        <button type="button" onclick="confirmReset()" class="btn-action bg-red-50 text-red-600 border-red-200 border-2"><span class="text-2xl">🧹</span><span>REINICIAR</span></button>
     </div>
 
     <div class="container-main">
         <header class="bg-white p-6 md:p-10 text-center border-b-[10px] border-slate-900">
             <h1 class="text-2xl font-black uppercase tracking-tighter text-slate-900 leading-none mb-4">Comité Especial del Río Tecate</h1>
             <div class="space-y-4">
+                <div id="inspectorIDDisplay" class="id-badge">ID: --</div><br>
                 <div id="folioDisplay" class="folio-top-badge italic uppercase tracking-widest">Generando Folio...</div>
             </div>
-            <p class="text-[10px] text-slate-500 uppercase font-black mt-6 tracking-[0.4em]">Cédula de Sincronización Automática (Multioja Excel)</p>
+            <p class="text-[10px] text-slate-500 uppercase font-black mt-6 tracking-[0.4em]">Cédula Técnica (Visualización Integral)</p>
         </header>
 
         <form id="diagnosticoForm" class="p-4 md:p-10 space-y-4">
@@ -145,7 +198,7 @@
             <section class="bg-slate-50 p-6 rounded-3xl border border-slate-200 section-block">
                 <div class="flex justify-between items-center mb-6 border-b border-slate-200 pb-3">
                     <h3 class="font-black text-xs uppercase text-slate-800 tracking-widest italic">I. Registro de Brigadista</h3>
-                    <div id="session-badge" class="hidden text-[9px] font-black text-blue-700 bg-blue-100 px-3 py-1 rounded-lg uppercase tracking-widest">Validado</div>
+                    <div id="session-badge" class="hidden text-[9px] font-black text-white bg-blue-600 px-3 py-1 rounded-lg uppercase tracking-widest">Sesión Validada</div>
                 </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -182,8 +235,8 @@
                         <input type="hidden" id="coords" name="coordenadas">
                     </div>
                     <div class="border-l-0 md:border-l-2 border-slate-50 pl-0 md:pl-4">
-                        <label class="camera-trigger no-print"><span>📸</span><b>Foto Entorno</b><input type="file" accept="image/*" capture="environment" onchange="prevImg(this, 'gps_loc')" class="hidden-input"></label>
-                        <img id="p_gps_loc" class="preview-img !h-32 mx-auto">
+                        <label class="camera-trigger no-print"><span>📸</span><b>Foto de Ubicación</b><input type="file" accept="image/*" capture="environment" onchange="prevImg(this, 'gps_loc')" class="hidden-input"></label>
+                        <img id="p_gps_loc" class="preview-img mx-auto">
                     </div>
                 </div>
             </section>
@@ -194,15 +247,15 @@
                 <div class="section-header"><span>6.</span> Hallazgos Críticos y Puntos Ciegos</div>
                 <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4 mb-4" id="guiaContenedor"></div>
                 <div class="bg-slate-50 p-6 rounded-2xl mx-4 mb-4">
-                    <p class="field-label mb-4 text-center text-base underline decoration-blue-500 uppercase italic">Evidencia Fotográfica de Marcha</p>
+                    <p class="field-label mb-4 text-center text-base underline decoration-blue-500 uppercase italic">Evidencia Fotográfica de Marcha (Fotos Completas)</p>
                     <div class="photo-grid grid grid-cols-2 md:grid-cols-4 gap-4" id="galeriaMarcha"></div>
                 </div>
             </section>
 
             <section class="section-block border-2 rounded-3xl overflow-hidden bg-white shadow-sm p-6 space-y-6">
                 <div class="section-header"><span>7.</span> Conclusiones de Auditoría</div>
-                <div><label class="field-label mb-2">Problemáticas Detectadas</label><textarea name="problemas" class="auto-textarea" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea></div>
-                <div><label class="field-label mb-2">Propuestas e Intervenciones</label><textarea name="oportunidades" class="auto-textarea" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea></div>
+                <div><label class="field-label mb-2">Problemáticas Detectadas</label><textarea name="problemas" class="auto-textarea" oninput="autoResize(this)"></textarea></div>
+                <div><label class="field-label mb-2">Propuestas e Intervenciones</label><textarea name="oportunidades" class="auto-textarea" oninput="autoResize(this)"></textarea></div>
             </section>
 
             <section class="pt-6 pb-40 page-break text-center px-4">
@@ -230,6 +283,10 @@
 
         const guiaPuntos = ["Estado Físico Predominante", "Uso Social del Espacio", "Seguridad y Vigilancia", "Manejo de Residuos"];
 
+        function autoResize(el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; }
+        function openManual() { document.getElementById('manualModal').style.display = 'flex'; }
+        function closeManual() { document.getElementById('manualModal').style.display = 'none'; }
+
         async function assignInspectorID() {
             const nameInput = document.getElementById('inspectorName');
             const name = nameInput.value.trim();
@@ -251,6 +308,7 @@
 
             document.getElementById('assignedID').value = assignedNum;
             document.getElementById('assignedInitials').value = initials;
+            document.getElementById('inspectorIDDisplay').innerText = `ID: ${initials}-${assignedNum}`;
             handleIdentity();
         }
 
@@ -262,7 +320,7 @@
                 num: document.getElementById('assignedID').value,
                 initials: document.getElementById('assignedInitials').value
             };
-            localStorage.setItem('cert_prod_final_v1', JSON.stringify(data));
+            localStorage.setItem('cert_prod_vfinal', JSON.stringify(data));
             updateFolio();
         }
 
@@ -273,18 +331,20 @@
         }
 
         function loadSession() {
-            const config = JSON.parse(localStorage.getItem('cert_prod_final_v1') || '{}');
+            const config = JSON.parse(localStorage.getItem('cert_prod_vfinal') || '{}');
             if (config.inspector) {
                 document.getElementById('inspectorName').value = config.inspector;
                 document.getElementById('targetFolder').value = config.folder || "";
                 document.getElementById('equipoName').value = config.equipo || "";
                 document.getElementById('assignedID').value = config.num || "";
                 document.getElementById('assignedInitials').value = config.initials || "";
-                if (parseInt(localStorage.getItem('cert_count_v1') || 1) > 1) {
+                if (config.initials && config.num) document.getElementById('inspectorIDDisplay').innerText = `ID: ${config.initials}-${config.num}`;
+                if (parseInt(localStorage.getItem('cert_count_final') || 1) > 1) {
                     ['inspectorName', 'targetFolder', 'equipoName'].forEach(id => {
                         const el = document.getElementById(id);
                         if(el) el.classList.add('input-locked');
                     });
+                    document.getElementById('session-badge')?.classList.remove('hidden');
                 }
             }
             updateFolio();
@@ -353,8 +413,8 @@
             setTimeout(() => {
                 document.title = oldTitle;
                 if (choice === 'next') {
-                    let count = parseInt(localStorage.getItem('cert_count_v1') || 1);
-                    localStorage.setItem('cert_count_v1', count + 1);
+                    let count = parseInt(localStorage.getItem('cert_count_final') || 1);
+                    localStorage.setItem('cert_count_final', count + 1);
                     location.reload();
                 } else { exportMasterExcel(); location.reload(); }
             }, 1500);
@@ -365,8 +425,12 @@
             if (data.length === 0) return;
             const wb = XLSX.utils.book_new();
 
-            const genData = data.map(r => ({ "Folio": r.folio, "Fecha": r.fecha_captura, "Inspector": r.inspector, "ID": r.inspector_initials + "-" + r.inspector_id, "Tramo": r.lugar_tramo, "GPS": r.gps_coords }));
-            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(genData), "General");
+            const genData = data.map(r => ({ 
+                "Folio": r.folio, "Fecha": r.fecha_captura, "Inspector": r.inspector, "Lugar": r.lugar_tramo, "GPS": r.gps_coords,
+                "Problemáticas": r.problemas, "Propuestas": r.oportunidades, 
+                "Hallazgo_1": r.guia_0, "Hallazgo_2": r.guia_1, "Hallazgo_3": r.guia_2, "Hallazgo_4": r.guia_3
+            }));
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(genData), "General y Notas");
             
             secciones.forEach(sec => {
                 const secData = data.map(r => {
@@ -374,13 +438,10 @@
                     sec.items.forEach((item, idx) => { row[item] = r[`${sec.prefix}_v_${idx}`] || "N/E"; });
                     return row;
                 });
-                XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(secData), sec.titulo.substring(0, 31));
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(secData), sec.prefix.toUpperCase());
             });
 
-            const closure = data.map(r => ({ "Folio": r.folio, "Problemáticas": r.problemas, "Propuestas": r.oportunidades }));
-            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(closure), "Notas Finales");
-
-            XLSX.writeFile(wb, `MACRO_CERT_MASTER_${new Date().toISOString().slice(0,10)}.xlsx`);
+            XLSX.writeFile(wb, `REPORTE_MACRO_CERT_${new Date().toISOString().slice(0,10)}.xlsx`);
         }
 
         function updateFolio() {
@@ -390,13 +451,18 @@
             const brigNum = document.getElementById('assignedID').value || "00";
             const now = new Date();
             const dateStr = now.getFullYear().toString() + (now.getMonth() + 1).toString().padStart(2, '0') + now.getDate().toString().padStart(2, '0');
-            const count = String(localStorage.getItem('cert_count_v1') || 1).padStart(3, '0');
+            const count = String(localStorage.getItem('cert_count_final') || 1).padStart(3, '0');
             const folio = `CERT-${dateStr}-${initials}-${brigNum}-${count}`;
             document.getElementById('inputFolio').value = folio;
             folioBadge.innerText = folio;
         }
 
-        function confirmReset() { if (confirm("⚠️ ¿REINICIAR TODO EL DISPOSITIVO?")) { localStorage.clear(); location.reload(); } }
+        function confirmReset() { 
+            if (confirm("⚠️ ¿BORRAR TODO? Esto eliminará la identidad del brigadista y regresará el folio al 001.")) { 
+                localStorage.clear(); location.reload(); 
+            } 
+        }
+        
         function prevImg(input, id) {
             const img = document.getElementById(`p_${id}`);
             if (input.files && input.files[0]) {
@@ -427,7 +493,7 @@
                         <input type="hidden" name="${sec.prefix}_start_time" value="">
                     </div>
                     <div class="table-container"><table><thead><tr><th class="text-left px-5">Indicador Técnico</th><th>B / Alt</th><th>R / Med</th><th>M / Baj</th><th>N/E</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>
-                    <div class="p-4 bg-slate-50/20"><div class="photo-grid grid grid-cols-2 md:grid-cols-4 gap-4">${[1,2,3,4].map(n => `<div class="photo-slot"><label class="camera-trigger no-print"><span>📸</span><b>Evidencia ${n}</b><input type="file" accept="image/*" capture="environment" onchange="prevImg(this, '${sec.prefix}_${n}')" class="hidden-input"></label><img id="p_${sec.prefix}_${n}" class="preview-img"></div>`).join('')}</div></div>`;
+                    <div class="p-4 bg-slate-50/20"><div class="photo-grid grid grid-cols-2 md:grid-cols-4 gap-4">${[1,2,3,4].map(n => `<div class="photo-slot"><label class="camera-trigger no-print"><span>📸</span><b>Evi ${n}</b><input type="file" accept="image/*" capture="environment" onchange="prevImg(this, '${sec.prefix}_${n}')" class="hidden-input"></label><img id="p_${sec.prefix}_${n}" class="preview-img"></div>`).join('')}</div></div>`;
                 container.appendChild(sectionDiv);
             });
         }
@@ -437,13 +503,13 @@
             const guiasCont = document.getElementById('guiaContenedor');
             guiaPuntos.forEach((item, idx) => {
                 const d = document.createElement('div');
-                d.innerHTML = `<label class="field-label">${idx+1}. ${item}</label><textarea name="guia_${idx}" class="auto-textarea"></textarea>`;
+                d.innerHTML = `<label class="field-label">${idx+1}. ${item}</label><textarea name="guia_${idx}" class="auto-textarea" oninput="autoResize(this)"></textarea>`;
                 guiasCont.appendChild(d);
             });
             const galeria = document.getElementById('galeriaMarcha');
             for(let i=1; i<=8; i++) {
                 const d = document.createElement('div'); d.className = "photo-slot";
-                d.innerHTML = `<label class="camera-trigger no-print"><span>📸</span><b>CAP ${i}</b><input type="file" accept="image/*" capture="environment" onchange="prevImg(this, 'm_${i}')" class="hidden-input"></label><img id="p_m_${i}" class="preview-img"><textarea name="m_txt_${i}" class="text-[10px] w-full border-t mt-2 text-center p-2 font-bold" rows="1" placeholder="Hallazgo..."></textarea>`;
+                d.innerHTML = `<label class="camera-trigger no-print"><span>📸</span><b>CAP ${i}</b><input type="file" accept="image/*" capture="environment" onchange="prevImg(this, 'm_${i}')" class="hidden-input"></label><img id="p_m_${i}" class="preview-img"><textarea name="m_txt_${i}" class="text-[10px] w-full border-t mt-2 text-center p-2 font-bold" rows="1" placeholder="Hallazgo..." oninput="autoResize(this)"></textarea>`;
                 galeria.appendChild(d);
             }
             loadSession();
