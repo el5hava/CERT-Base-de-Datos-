@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#1e293b">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>CERT-INFORME</title>
+    
+    <!-- SDK de Firebase para Sincronización en Red -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getFirestore, collection, addDoc, onSnapshot, doc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+
+        // Configuración de infraestructura CERT
+        const firebaseConfig = JSON.parse(__firebase_config);
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'cert-tecate-final';
+
+        window.cloudCERT = { db, collection, addDoc, appId, auth };
+
+        // Autenticación Robusta (Regla 3)
+        const initAuth = async () => {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (e) { console.error("Error de red CERT:", e); }
+        };
+        initAuth();
+
+        // Monitoreo de Red para los 50 usuarios
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                document.getElementById('cloud-status').innerText = "CONECTADO A LA RED";
+                document.getElementById('cloud-status').classList.replace('bg-slate-500', 'bg-emerald-600');
+                
+                const recordsRef = collection(db, 'artifacts', appId, 'public', 'data', 'auditoria_rio');
+                onSnapshot(recordsRef, (snap) => {
+                    document.getElementById('sync-counter').innerText = snap.size;
+                    window.allRecords = snap.docs.map(d => d.data());
+                }, (err) => {
+                    console.error("Error de permisos:", err);
+                    document.getElementById('cloud-status').innerText = "REINTENTANDO...";
+                });
+            }
+        });
+    </script>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap');
+        
+        body { font-family: 'Inter', sans-serif; background-color: #f1f5f9; color: #000; margin: 0; padding: 5px; -webkit-tap-highlight-color: transparent; }
+        .container-main { max-width: 950px; margin: 10px auto; background: white; border-radius: 24px; overflow: hidden; box-shadow: 0 4px 25px rgba(0,0,0,0.05); border: 1.5px solid #e2e8f0; }
+        
+        /* AJUSTE TAMAÑO CARTA PARA PDF */
+        @media print {
+            @page { size: letter; margin: 0.5cm; }
+            .no-print { display: none !important; }
+            body { background: white; padding: 0; margin: 0; }
+            .page-break { page-break-after: always; }
+            .container-main { border: none; width: 100%; max-width: 100%; margin: 0; border-radius: 0; box-shadow: none; }
+            textarea { border: 1px solid #cbd5e0 !important; font-size: 10pt !important; border-radius: 8px !important; height: auto !important; }
+            .section-block { border: 1px solid #e2e8f0; margin-bottom: 8px; padding: 10px !important; break-inside: avoid; border-radius: 12px !important; }
+            .section-header { background: #1e293b !important; color: white !important; -webkit-print-color-adjust: exact; font-size: 10pt !important; padding: 8px 15px !important; }
+            .signature-box { border-top: 2px solid #000; margin-top: 30px; display: block !important; }
+            .field-input { border: 1px solid #eee !important; background: transparent !important; padding: 4px !important; font-size: 10pt !important; }
+        }
+
+        /* DISEÑO ALTO CONTRASTE */
+        .field-label { display: block; font-weight: 800; font-size: 0.7rem; color: #1e293b; text-transform: uppercase; margin-bottom: 0.2rem; letter-spacing: 0.025em; }
+        .field-input { width: 100%; background-color: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 0.6rem; font-size: 0.95rem; color: #000; font-weight: 600; }
+        .input-locked { background-color: #f1f5f9 !important; color: #64748b !important; border: 2px dashed #cbd5e0 !important; pointer-events: none; opacity: 0.8; }
+        
+        .section-header { background-color: #1e293b; color: #fff; padding: 10px 18px; font-weight: 900; text-transform: uppercase; font-size: 0.75rem; border-radius: 14px 14px 0 0; display: flex; align-items: center; gap: 10px; }
+        
+        .sidebar-actions { position: fixed; top: 50%; right: 10px; transform: translateY(-50%); z-index: 2000; display: flex; flex-direction: column; gap: 8px; }
+        .btn-action { width: 75px; height: 70px; background: white; border: 1.5px solid #e2e8f0; border-radius: 18px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 0.55rem; font-weight: 900; color: #1e293b; box-shadow: 0 4px 12px rgba(0,0,0,0.06); border: none; }
+
+        .table-container { overflow-x: auto; margin-top: 0; border: 1.5px solid #e2e8f0; border-radius: 0 0 16px 16px; border-top: none; }
+        table { width: 100%; border-collapse: collapse; min-width: 600px; }
+        th { background: #f8fafc; padding: 6px; font-size: 8px; text-transform: uppercase; color: #475569; border-bottom: 1.5px solid #e2e8f0; }
+        td { padding: 6px 12px; border-top: 1px solid #f1f5f9; font-size: 0.8rem; font-weight: 600; color: #000; }
+        input[type="radio"] { width: 24px; height: 24px; cursor: pointer; accent-color: #1e293b; }
+
+        /* CÁMARA VISUAL (SIN EXAMINAR) */
+        .camera-trigger { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; cursor: pointer; padding: 12px; background: #fff; border: 2px dashed #1e293b; border-radius: 16px; transition: 0.2s; min-height: 80px; position: relative; overflow: hidden; }
+        .camera-trigger:hover { background: #f0f9ff; border-style: solid; border-color: #2563eb; }
+        .camera-trigger span { font-size: 1.6rem; }
+        .camera-trigger b { font-size: 0.55rem; text-transform: uppercase; color: #1e293b; text-align: center; }
+        .preview-img { width: 100%; height: 160px; object-fit: cover; border-radius: 12px; display: none; margin-top: 6px; border: 1.5px solid #e2e8f0; }
+        .hidden-input { display: none !important; }
+
+        .modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.95); display: none; align-items: center; justify-content: center; z-index: 5000; padding: 15px; backdrop-filter: blur(8px); }
+        .modal-content { background: white; padding: 25px; border-radius: 24px; max-width: 800px; width: 100%; max-height: 85vh; overflow-y: auto; border: 2px solid #e2e8f0; }
+        
+        .status-header { background: #1e293b; color: #fff; padding: 5px 20px; font-size: 9px; font-weight: 900; display: flex; justify-content: space-between; align-items: center; }
+        .folio-top-badge { background: #000; color: #fff; padding: 8px 30px; border-radius: 99px; font-weight: 900; font-size: 1.6rem; letter-spacing: 0.1em; display: inline-block; box-shadow: 0 4px 15px rgba(0,0,0,0.3); border: 2px solid #fff; }
+        .btn-decision { width: 100%; padding: 18px; border-radius: 16px; font-weight: 900; text-transform: uppercase; font-size: 0.95rem; margin-bottom: 12px; border: none; cursor: pointer; }
+    </style>
+</head>
+<body class="bg-slate-100">
+
+    <div class="no-print status-header">
+        <div class="flex items-center gap-3">
+            <span>● RED CERT - MONITOREO GLOBAL</span>
+            <span id="cloud-status" class="bg-slate-500 px-3 py-0.5 rounded text-[8px]">SIN CONEXIÓN</span>
+        </div>
+        <span class="tracking-tighter uppercase font-black">Registros en Nube: <span id="sync-counter" class="bg-blue-600 px-2 rounded">0</span></span>
+    </div>
+
+    <!-- MODAL FINALIZACIÓN -->
+    <div id="finalizeModal" class="modal-overlay no-print">
+        <div class="modal-content shadow-2xl text-center" onclick="event.stopPropagation()">
+            <div class="text-5xl mb-4">✅</div>
+            <h2 class="text-2xl font-black text-slate-900 mb-2 uppercase">Tramo Completado</h2>
+            <p class="text-sm text-slate-500 mb-8">El PDF se descargará con el folio. Los datos se enviarán a la base de datos central de la brigada.<br><b>¿Qué desea realizar ahora?</b></p>
+            <button onclick="handleFinalizeChoice('next')" class="btn-decision bg-[#1e293b] text-white border-b-8 border-slate-900 uppercase">➕ ABRIR NUEVO REGISTRO</button>
+            <button onclick="handleFinalizeChoice('total')" class="btn-decision bg-blue-600 text-white border-b-8 border-blue-800 uppercase">📊 FINALIZAR JORNADA Y CSV</button>
+            <button onclick="closeFinalizeModal()" class="mt-4 text-xs font-bold text-slate-400 uppercase underline">Cancelar</button>
+        </div>
+    </div>
+
+    <div class="sidebar-actions no-print">
+        <button type="button" onclick="exportMasterCSV()" class="btn-action bg-blue-700 !text-white"><span class="text-2xl">📊</span><span>CSV</span></button>
+        <button type="button" onclick="confirmReset()" class="btn-action bg-slate-100"><span class="text-2xl">🧹</span><span>REINICIAR</span></button>
+    </div>
+
+    <div class="container-main">
+        <header class="bg-white p-6 md:p-8 text-center border-b-[8px] border-slate-900">
+            <h1 class="text-2xl font-black uppercase tracking-tighter text-slate-900 leading-none mb-4">Comité Especial del Río Tecate</h1>
+            <div id="folioDisplay" class="folio-top-badge">CERT-001</div>
+            <p class="text-[10px] text-slate-500 uppercase font-black mt-4 tracking-[0.4em]">Cédula Integral de Diagnóstico y Marcha</p>
+        </header>
+
+        <form id="diagnosticoForm" class="p-4 md:p-10 space-y-4">
+            
+            <!-- BLOQUE I: IDENTIDAD -->
+            <section class="bg-slate-50 p-6 rounded-3xl border border-slate-200 section-block">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div><label class="field-label">Inspector Responsable</label><input type="text" id="inspectorName" name="inspector" class="field-input" oninput="handleIdentity()"></div>
+                    <div><label class="field-label">Carpeta Drive Destino</label><input type="text" id="targetFolder" name="carpeta" class="field-input" oninput="handleIdentity()"></div>
+                    <div><label class="field-label">Equipo / Brigada</label><input type="text" id="equipoName" name="equipo" class="field-input" oninput="handleIdentity()"></div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4 mt-4">
+                    <div class="bg-white p-2 rounded-xl border-2 border-slate-100 flex items-center justify-center gap-3"><label class="field-label !mb-0 text-blue-600">FECHA</label><input type="date" id="inputFecha" name="fecha" class="font-bold text-xs border-none bg-transparent" readonly></div>
+                    <div class="bg-white p-2 rounded-xl border-2 border-slate-100 flex items-center justify-center gap-3"><label class="field-label !mb-0 text-blue-600">HORA</label><input type="time" id="inputHora" name="hora" class="font-black text-base border-none bg-transparent" readonly></div>
+                </div>
+
+                <!-- GPS EN ESPEJO -->
+                <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 bg-white p-5 rounded-3xl border-2 border-blue-100 shadow-sm">
+                    <div class="flex flex-col justify-center text-center">
+                        <label class="field-label mb-4 underline decoration-blue-600 decoration-2 font-black uppercase">Localización Satelital</label>
+                        <button type="button" onclick="getPreciseGPS()" id="btnGPS" class="no-print bg-slate-900 text-white w-full py-5 rounded-2xl text-xs font-black shadow-lg">📍 FIJAR COORDENADAS</button>
+                        <input type="text" id="displayCoords" class="text-sm font-mono font-black text-blue-900 bg-transparent border-none w-full text-center mt-4" placeholder="ESPERANDO HARDWARE...">
+                        <input type="hidden" id="coords" name="coordenadas">
+                    </div>
+                    <div class="border-l-0 md:border-l-2 border-slate-50 pl-0 md:pl-4">
+                        <label class="camera-trigger no-print"><span>📸</span><b>Foto Entorno GPS</b><input type="file" accept="image/*" capture="environment" onchange="prevImg(this, 'gps_loc')" class="hidden-input"></label>
+                        <img id="p_gps_loc" class="preview-img !h-32 mx-auto">
+                    </div>
+                </div>
+            </section>
+
+            <!-- TABLAS DINÁMICAS (FULL INDICADORES) -->
+            <div id="tablasContenedor" class="space-y-4"></div>
+
+            <!-- HALLAZGOS -->
+            <section class="page-break section-block border-2 rounded-3xl overflow-hidden bg-white shadow-sm">
+                <div class="section-header"><span>6.</span> Hallazgos Críticos y Puntos Ciegos</div>
+                <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4 mb-4" id="guiaContenedor"></div>
+                <div class="bg-slate-50 p-6 rounded-2xl mx-4 mb-4">
+                    <p class="field-label mb-4 text-center text-base underline decoration-blue-500 uppercase">Evidencia Fotográfica de Marcha</p>
+                    <div class="photo-grid grid grid-cols-2 md:grid-cols-4 gap-4" id="galeriaMarcha"></div>
+                </div>
+            </section>
+
+            <section class="section-block border-2 rounded-3xl overflow-hidden bg-white shadow-sm">
+                <div class="section-header"><span>7.</span> Cierre de Auditoría del Tramo</div>
+                <div class="p-6 space-y-6">
+                    <div><label class="field-label mb-2">Problemáticas Detectadas</label><textarea name="problemas" class="auto-textarea" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea></div>
+                    <div><label class="field-label mb-2">Propuestas e Intervenciones</label><textarea name="oportunidades" class="auto-textarea" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea></div>
+                </div>
+            </section>
+
+            <!-- FINALIZACIÓN -->
+            <section class="pt-6 pb-40 page-break">
+                <div class="max-w-md mx-auto text-center px-4">
+                    <button type="button" onclick="openFinalizeModal()" class="no-print bg-[#1e293b] text-white w-full py-10 rounded-3xl shadow-2xl font-black text-2xl hover:bg-black transition-all border-b-8 border-slate-950 active:scale-95">🏁 FINALIZAR REGISTRO</button>
+                    <div id="visual-signature" class="hidden signature-box mt-20 pt-10 border-t-4 border-slate-900 text-center bg-white">
+                        <div id="sign-name-ui" class="text-3xl font-black italic mb-2 uppercase"></div>
+                        <p class="text-xs font-black text-slate-600 uppercase tracking-widest border-y py-2 border-slate-100 mb-2">Firma Digital Registrada - Brigada CERT</p>
+                        <div id="sign-id-ui" class="text-[10px] font-mono text-slate-400 font-bold uppercase"></div>
+                    </div>
+                </div>
+            </section>
+            <input type="hidden" id="inputFolio" name="folio">
+        </form>
+    </div>
+
+    <script>
+        const secciones = [
+            { titulo: "Infraestructura Urbana", prefix: "infra", icon: "🏗️", headers: ["B", "R", "M", "N/E"], items: ["Flujo del agua", "Contaminación (Basura)", "Sedimentación", "Obstrucciones", "Estabilidad del cauce", "Canalización del río", "Muros de contención", "Estado de estructuras", "Descargas pluviales", "Drenaje pluvial conectado", "Cantidad de puentes", "Estado de puentes", "Seguridad de cruces"] },
+            { titulo: "Medio Ambiente", prefix: "amb", icon: "🌿", headers: ["Alt", "Med", "Baj", "N/E"], items: ["Vegetación en cauce", "Vegetación ribereña", "Presencia de fauna", "Áreas naturales", "Sombra/Temp.", "Riesgo inundación", "Erosión suelo", "Acumulación residuos", "Deterioro infra.", "Infiltración"] },
+            { titulo: "Desarrollo Social", prefix: "soc", icon: "👥", headers: ["Alta", "Med", "Baja", "N/E"], items: ["Viviendas zona federal", "Construcciones irregulares", "Invasión borde río", "Uso informal suelo", "Personas calle", "Espacios abandonados", "Áreas comunitarias"] },
+            { titulo: "Seguridad Ciudadana", prefix: "seg", icon: "🛡️", headers: ["B", "R", "M", "N/E"], items: ["Calles cercanas", "Banquetas/Accesos", "Alumbrado público", "Equipamiento urbano", "Áreas de descanso", "Espacios recreativos"] }
+        ];
+
+        const guiaPuntos = ["Estado Físico Predominante", "Uso Social del Espacio", "Seguridad y Vigilancia", "Manejo de Residuos"];
+
+        function handleIdentity() {
+            const data = { inspector: document.getElementById('inspectorName').value, equipo: document.getElementById('equipoName').value, folder: document.getElementById('targetFolder').value };
+            localStorage.setItem('cert_config_v_stable', JSON.stringify(data));
+            updateFolio();
+        }
+
+        function loadSession() {
+            const config = JSON.parse(localStorage.getItem('cert_config_v_stable') || '{}');
+            if (config.inspector) {
+                document.getElementById('inspectorName').value = config.inspector;
+                document.getElementById('targetFolder').value = config.folder || "";
+                document.getElementById('equipoName').value = config.equipo || "";
+                if (parseInt(localStorage.getItem('cert_counter_v_final') || 1) > 1) {
+                    ['inspectorName', 'targetFolder', 'equipoName'].forEach(id => document.getElementById(id).classList.add('input-locked'));
+                }
+            }
+            updateFolio();
+        }
+
+        function getPreciseGPS() {
+            const btn = document.getElementById('btnGPS'); btn.innerText = "⏳ LOCALIZANDO...";
+            navigator.geolocation.getCurrentPosition(
+                (p) => {
+                    const coords = `${p.coords.latitude.toFixed(6)}, ${p.coords.longitude.toFixed(6)}`;
+                    document.getElementById('coords').value = coords;
+                    document.getElementById('displayCoords').value = coords;
+                    document.getElementById('inputHora').value = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                    btn.innerText = "📍 FIJADO"; btn.classList.replace('bg-slate-900', 'bg-green-700');
+                },
+                (err) => { alert("Error GPS. Asegúrese de tener el GPS activo y estar bajo cielo abierto."); btn.innerText = "📍 REINTENTAR"; },
+                { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
+            );
+        }
+
+        function openFinalizeModal() {
+            if (!document.getElementById('inspectorName').value) { alert("⚠️ IDENTIDAD INCOMPLETA."); return; }
+            document.getElementById('finalizeModal').style.display = 'flex';
+        }
+
+        function closeFinalizeModal() { document.getElementById('finalizeModal').style.display = 'none'; }
+
+        async function handleFinalizeChoice(choice) {
+            const name = document.getElementById('inspectorName').value;
+            const folio = document.getElementById('inputFolio').value;
+            const folder = document.getElementById('targetFolder').value;
+            document.getElementById('sign-name-ui').innerText = name;
+            document.getElementById('sign-id-ui').innerText = "AUDITORÍA ID: " + folio;
+            document.getElementById('visual-signature').classList.remove('hidden');
+
+            const oldTitle = document.title;
+            document.title = `${folder}_${folio}`;
+            closeFinalizeModal();
+
+            if (window.cloudCERT && window.cloudCERT.auth.currentUser) {
+                const formData = new FormData(document.getElementById('diagnosticoForm'));
+                const data = { timestamp: new Date().toISOString(), inspector: name, folio: folio };
+                formData.forEach((v, k) => { if(!(v instanceof File)) data[k] = v; });
+                try { await window.cloudCERT.addDoc(window.cloudCERT.collection(window.cloudCERT.db, 'artifacts', window.cloudCERT.appId, 'public', 'data', 'auditoria_rio'), data); } catch (e) {}
+            }
+            
+            window.print();
+            setTimeout(() => {
+                document.title = oldTitle;
+                if (choice === 'next') {
+                    let count = parseInt(localStorage.getItem('cert_counter_v_final') || 1);
+                    localStorage.setItem('cert_counter_v_final', count + 1);
+                    location.reload();
+                } else { exportMasterCSV(); location.reload(); }
+            }, 1000);
+        }
+
+        function exportMasterCSV() {
+            const data = window.allRecords || [];
+            if (data.length === 0) return;
+            const headers = Object.keys(data[0]).join(",");
+            const rows = data.map(r => Object.values(r).map(v => `"${String(v).replace(/"/g, '""')}"`).join(","));
+            const content = "\uFEFF" + headers + "\n" + rows.join("\n");
+            const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = `BASE_MAESTRA_CERT_${new Date().toISOString().slice(0,10)}.csv`;
+            link.click();
+        }
+
+        function updateFolio() {
+            const name = document.getElementById('inspectorName').value;
+            const ini = name.split(' ').filter(p => p.length > 0).map(n => n[0]).join('').toUpperCase().substring(0, 3) || "XXX";
+            const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+            const count = String(localStorage.getItem('cert_counter_v_final') || 1).padStart(3, '0');
+            const folio = `CERT-${date}-${ini}-${count}`;
+            document.getElementById('inputFolio').value = folio;
+            document.getElementById('folioDisplay').innerText = folio;
+        }
+
+        function confirmReset() { if (confirm("⚠️ ¿REINICIAR TODO?")) { localStorage.clear(); location.reload(); } }
+        function prevImg(input, id) {
+            const img = document.getElementById(`p_${id}`);
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = e => { img.src = e.target.result; img.style.display = 'block'; };
+                reader.readAsDataURL(input.files[0]);
+            }
+        }
+
+        function createTables() {
+            const container = document.getElementById('tablasContenedor');
+            secciones.forEach((sec, sIdx) => {
+                const bNum = sIdx + 2;
+                const sectionDiv = document.createElement('section');
+                sectionDiv.className = "rounded-2xl overflow-hidden border border-slate-200 bg-white shadow-sm section-block";
+                let rowsHtml = sec.items.map((item, idx) => `<tr><td class="font-bold text-slate-800">${item}</td><td class="text-center"><input type="radio" name="${sec.prefix}_v_${idx}" value="B"></td><td class="text-center"><input type="radio" name="${sec.prefix}_v_${idx}" value="R"></td><td class="text-center"><input type="radio" name="${sec.prefix}_v_${idx}" value="M"></td><td class="text-center"><input type="radio" name="${sec.prefix}_v_${idx}" value="N/E"></td></tr>`).join('');
+                sectionDiv.innerHTML = `<div class="section-header"><span>${bNum}.</span> ${sec.icon} ${sec.titulo}</div><div class="table-container"><table><thead><tr><th class="text-left px-5">Indicador Técnico</th><th>B / Alt</th><th>R / Med</th><th>M / Baj</th><th>N/E</th></tr></thead><tbody>${rowsHtml}</tbody></table></div><div class="p-4 bg-slate-50/20"><div class="photo-grid grid grid-cols-2 md:grid-cols-4 gap-4">${[1,2,3,4].map(n => `<div class="photo-slot"><label class="camera-trigger no-print"><span>📸</span><b>Evidencia ${n}</b><input type="file" accept="image/*" capture="environment" onchange="prevImg(this, '${sec.prefix}_${n}')" class="hidden-input"></label><img id="p_${sec.prefix}_${n}" class="preview-img"></div>`).join('')}</div></div>`;
+                container.appendChild(sectionDiv);
+            });
+        }
+
+        window.onload = () => {
+            const n = new Date();
+            document.getElementById('inputFecha').value = n.toISOString().slice(0, 10);
+            document.getElementById('inputHora').value = n.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            createTables();
+            const guias = document.getElementById('guiaContenedor');
+            guiaPuntos.forEach((item, idx) => {
+                const d = document.createElement('div');
+                d.innerHTML = `<label class="field-label">${idx+1}. ${item}</label><textarea name="guia_${idx}" class="auto-textarea"></textarea>`;
+                guias.appendChild(d);
+            });
+            const galeria = document.getElementById('galeriaMarcha');
+            for(let i=1; i<=8; i++) {
+                const d = document.createElement('div'); d.className = "photo-slot";
+                d.innerHTML = `<label class="camera-trigger no-print"><span>📸</span><b>CAP ${i}</b><input type="file" accept="image/*" capture="environment" onchange="prevImg(this, 'm_${i}')" class="hidden-input"></label><img id="p_m_${i}" class="preview-img"><textarea name="m_txt_${i}" class="text-[10px] w-full border-t mt-2 text-center p-2 font-bold" rows="1" placeholder="Hallazgo..."></textarea>`;
+                galeria.appendChild(d);
+            }
+            loadSession();
+        };
+    </script>
+</body>
+</html>
