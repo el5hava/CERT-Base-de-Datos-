@@ -11,10 +11,10 @@
     <!-- Librería Excel Multioja (.xlsx) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
-    <!-- SDK de Firebase para Red Global -->
+    <!-- SDK de Firebase para Red Global con Persistencia Offline -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getFirestore, collection, addDoc, onSnapshot, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, onSnapshot, getDocs, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
         // CONFIGURACIÓN REAL INTEGRADA
@@ -32,6 +32,15 @@
         const db = getFirestore(app);
         const auth = getAuth(app);
         const appId = 'cert-tecate-2026'; 
+
+        // ACTIVACIÓN DE PERSISTENCIA OFFLINE (REGLA MAESTRA)
+        enableIndexedDbPersistence(db).catch((err) => {
+            if (err.code == 'failed-precondition') {
+                console.warn("Persistencia falló: múltiples pestañas abiertas.");
+            } else if (err.code == 'unimplemented') {
+                console.warn("Navegador no soporta persistencia.");
+            }
+        });
 
         window.certCloud = { db, auth, appId, collection, addDoc, getDocs };
 
@@ -82,7 +91,6 @@
             .section-block { border: 1.5px solid #e2e8f0; margin-bottom: 10px; padding: 12px !important; break-inside: avoid; border-radius: 12px !important; }
             .section-header { background: #1e293b !important; color: white !important; -webkit-print-color-adjust: exact; border-radius: 12px 12px 0 0 !important; font-size: 10pt !important; padding: 8px 15px !important; }
             
-            /* Forzar visualización de Radio Buttons marcados */
             input[type="radio"] {
                 appearance: none; -webkit-appearance: none;
                 border: 2px solid #000 !important;
@@ -111,7 +119,6 @@
         .input-locked { background-color: #f1f5f9 !important; color: #64748b !important; border: 2px dashed #cbd5e0 !important; pointer-events: none; opacity: 0.8; }
         .section-header { background-color: #1e293b; color: #fff; padding: 12px 18px; font-weight: 900; text-transform: uppercase; font-size: 0.7rem; border-radius: 14px 14px 0 0; display: flex; align-items: center; justify-content: space-between; }
         
-        /* BOTONES FLOTANTES SUPERIOR DERECHA */
         .sidebar-actions { position: fixed; top: 60px; right: 10px; z-index: 2000; display: flex; flex-direction: column; gap: 8px; }
         .btn-action { width: 75px; height: 70px; background: white; border: 1.5px solid #e2e8f0; border-radius: 18px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 0.5rem; font-weight: 900; color: #1e293b; box-shadow: 0 4px 12px rgba(0,0,0,0.1); border: none; }
         .btn-action:active { transform: scale(0.9); }
@@ -138,6 +145,10 @@
         .folio-top-badge { background: #1e293b; color: #fff; padding: 10px 35px; border-radius: 99px; font-weight: 900; font-size: 1.3rem; letter-spacing: 0.1em; display: inline-block; box-shadow: 0 4px 15px rgba(0,0,0,0.3); border: 2px solid #fff; }
         .btn-decision { width: 100%; padding: 18px; border-radius: 16px; font-weight: 900; text-transform: uppercase; font-size: 0.95rem; margin-bottom: 12px; border: none; cursor: pointer; transition: 0.2s; }
         .section-time-badge { background: #3b82f6; color: white; padding: 2px 8px; border-radius: 6px; font-size: 9px; font-weight: 800; display: none; }
+        
+        .manual-step { background: #f8fafc; border-left: 4px solid #3b82f6; padding: 10px; margin-bottom: 15px; border-radius: 0 12px 12px 0; }
+        .manual-step h3 { font-weight: 900; color: #1e293b; font-size: 0.75rem; text-transform: uppercase; margin-bottom: 4px; }
+        .manual-step p { font-size: 0.7rem; color: #475569; line-height: 1.4; }
     </style>
 </head>
 <body class="bg-slate-100">
@@ -155,25 +166,49 @@
         <div class="modal-content shadow-2xl">
             <div class="text-5xl mb-4">🚀</div>
             <h2 class="text-2xl font-black text-slate-900 mb-2 uppercase tracking-tighter">Tramo Finalizado</h2>
-            <p class="text-sm text-slate-500 mb-8 px-4">El PDF se guardará con su Folio Único. Los datos y notas de texto se enviarán al Excel Macro Global.</p>
+            <p class="text-sm text-slate-500 mb-8 px-4">El PDF se guardará con su Folio Único. Si no tiene señal, los datos se sincronizarán solos al recuperar internet.</p>
             <button onclick="handleFinalizeChoice('next')" class="btn-decision bg-[#1e293b] text-white border-b-8 border-slate-950 uppercase">➕ GUARDAR Y NUEVO REGISTRO</button>
             <button onclick="handleFinalizeChoice('total')" class="btn-decision bg-blue-600 text-white border-b-8 border-blue-800 uppercase">📊 FINALIZAR JORNADA Y EXCEL</button>
             <button onclick="closeFinalizeModal()" class="mt-4 text-xs font-bold text-slate-400 uppercase underline">Seguir editando</button>
         </div>
     </div>
 
-    <!-- MODAL MANUAL DE USUARIO -->
+    <!-- MODAL MANUAL DE USUARIO INTEGRAL -->
     <div id="manualModal" class="modal-overlay no-print">
         <div class="modal-content shadow-2xl !text-left">
-            <h2 class="text-xl font-black mb-4 uppercase border-b-4 border-blue-600 pb-2">Manual del Brigadista</h2>
-            <div class="space-y-4 text-sm font-medium text-slate-700">
-                <p><strong>1. Identidad:</strong> Escribe tu nombre al inicio para obtener tu ID único (01-50).</p>
-                <p><strong>2. GPS:</strong> Presiona "Fijar Coordenadas" al llegar al tramo. Toma la foto de ubicación para validez legal.</p>
-                <p><strong>3. Guardar PDF:</strong> Al finalizar, elige "Guardar como PDF" en el menú de impresión. El sistema pone el nombre por ti.</p>
-                <p><strong>4. Notas:</strong> Escribe detalles en "Problemáticas". Estas notas aparecerán íntegras en el Excel de coordinación.</p>
-                <p><strong>5. Reiniciar:</strong> El botón rojo borra todo para empezar una jornada nueva desde el folio 001.</p>
+            <h2 class="text-xl font-black mb-4 uppercase border-b-4 border-blue-600 pb-2">Manual Integral de Auditoría</h2>
+            
+            <div class="manual-step">
+                <h3>1. Registro e Identidad</h3>
+                <p>Escriba su nombre completo al iniciar. El sistema le asignará un <b>ID único (01-50)</b> sincronizado con la nube colectiva.</p>
             </div>
-            <button onclick="closeManual()" class="w-full mt-8 py-4 bg-[#1e293b] text-white font-black rounded-xl uppercase">Entendido</button>
+
+            <div class="manual-step">
+                <h3>2. Uso Offline (Sin Internet)</h3>
+                <p><b>Importante:</b> Abra la página mientras tenga señal. En el río, puede seguir llenando el formulario y guardando PDFs. Los datos de la nube se enviarán <b>automáticamente</b> en cuanto su dispositivo recupere conexión a internet.</p>
+            </div>
+
+            <div class="manual-step">
+                <h3>3. GPS y Lugar (Editable)</h3>
+                <p>Presione <b>"Fijar Coordenadas"</b> al llegar al punto. En el mismo bloque, describa el lugar o tramo. El GPS funciona por satélite, no requiere internet para obtener coordenadas si el sensor está activo.</p>
+            </div>
+
+            <div class="manual-step">
+                <h3>4. Guardado de PDF</h3>
+                <p>Al presionar "Finalizar", elija <b>"Guardar como PDF"</b> en su tablet. El sistema pone el nombre del folio automáticamente. Las fotos se verán íntegras y los círculos de opción marcados.</p>
+            </div>
+
+            <div class="manual-step">
+                <h3>5. Excel Macro (Datos de Todos)</h3>
+                <p>El botón azul une los registros de <b>toda la brigada</b>. Se recomienda descargarlo al final del día una vez que todos los brigadistas hayan recuperado señal y sincronizado sus datos.</p>
+            </div>
+
+            <div class="manual-step">
+                <h3>6. Botón Reiniciar</h3>
+                <p>Use el botón rojo <b>REINICIAR</b> únicamente al cambiar de inspector. Borra su identidad y reinicia el folio al 001.</p>
+            </div>
+
+            <button onclick="closeManual()" class="w-full mt-4 py-4 bg-[#1e293b] text-white font-black rounded-xl uppercase shadow-lg">Cerrar Guía de Campo</button>
         </div>
     </div>
 
@@ -190,7 +225,7 @@
                 <div id="inspectorIDDisplay" class="id-badge">ID: --</div><br>
                 <div id="folioDisplay" class="folio-top-badge italic uppercase tracking-widest">Generando Folio...</div>
             </div>
-            <p class="text-[10px] text-slate-500 uppercase font-black mt-6 tracking-[0.4em]">Cédula Técnica (Visualización Integral)</p>
+            <p class="text-[10px] text-slate-500 uppercase font-black mt-6 tracking-[0.4em]">Cédula de Sincronización Automática</p>
         </header>
 
         <form id="diagnosticoForm" class="p-4 md:p-10 space-y-4">
@@ -201,14 +236,10 @@
                     <div id="session-badge" class="hidden text-[9px] font-black text-white bg-blue-600 px-3 py-1 rounded-lg uppercase tracking-widest">Sesión Validada</div>
                 </div>
 
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                         <label class="field-label">Nombre del Inspector</label>
                         <input type="text" id="inspectorName" name="inspector" class="field-input" placeholder="Nombre completo" onblur="assignInspectorID()">
-                    </div>
-                    <div>
-                        <label class="field-label">Lugar / Tramo</label>
-                        <input type="text" id="targetFolder" name="lugar_tramo" class="field-input" placeholder="Ej. Paso del Águila" oninput="handleIdentity()">
                     </div>
                     <div>
                         <label class="field-label">Brigada</label>
@@ -227,15 +258,21 @@
                     </div>
                 </div>
 
-                <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 bg-white p-5 rounded-3xl border-2 border-blue-100 shadow-sm text-center">
-                    <div class="flex flex-col justify-center">
-                        <label class="field-label mb-4 underline decoration-blue-600 font-black uppercase">Localización GPS</label>
-                        <button type="button" onclick="getPreciseGPS()" id="btnGPS" class="no-print bg-slate-900 text-white w-full py-5 rounded-2xl text-xs font-black shadow-lg hover:bg-black transition-all">📍 FIJAR COORDENADAS</button>
-                        <input type="text" id="displayCoords" name="gps_coords" class="text-sm font-mono font-black text-blue-900 bg-transparent border-none w-full text-center mt-4" placeholder="ESPERANDO SATÉLITES...">
-                        <input type="hidden" id="coords" name="coordenadas">
+                <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 bg-white p-5 rounded-3xl border-2 border-blue-100 shadow-sm">
+                    <div class="flex flex-col justify-center space-y-4">
+                        <div class="text-center">
+                            <label class="field-label mb-2 underline decoration-blue-600 font-black uppercase italic">Ubicación Técnica</label>
+                            <button type="button" onclick="getPreciseGPS()" id="btnGPS" class="no-print bg-slate-900 text-white w-full py-5 rounded-2xl text-xs font-black shadow-lg hover:bg-black transition-all">📍 FIJAR COORDENADAS</button>
+                            <input type="text" id="displayCoords" name="gps_coords" class="text-sm font-mono font-black text-blue-900 bg-transparent border-none w-full text-center mt-2" placeholder="ESPERANDO GPS...">
+                            <input type="hidden" id="coords" name="coordenadas">
+                        </div>
+                        <div class="border-t pt-4">
+                            <label class="field-label">Lugar / Tramo Específico (Editable)</label>
+                            <input type="text" id="targetFolder" name="lugar_tramo" class="field-input !bg-white border-blue-200" placeholder="Ej. Puente Encinos - Margen Derecha" oninput="handleIdentity()">
+                        </div>
                     </div>
-                    <div class="border-l-0 md:border-l-2 border-slate-50 pl-0 md:pl-4">
-                        <label class="camera-trigger no-print"><span>📸</span><b>Foto de Ubicación</b><input type="file" accept="image/*" capture="environment" onchange="prevImg(this, 'gps_loc')" class="hidden-input"></label>
+                    <div class="border-l-0 md:border-l-2 border-slate-50 pl-0 md:pl-4 flex flex-col items-center justify-center">
+                        <label class="camera-trigger no-print w-full"><span>📸</span><b>Foto de Ubicación</b><input type="file" accept="image/*" capture="environment" onchange="prevImg(this, 'gps_loc')" class="hidden-input"></label>
                         <img id="p_gps_loc" class="preview-img mx-auto">
                     </div>
                 </div>
@@ -247,7 +284,7 @@
                 <div class="section-header"><span>6.</span> Hallazgos Críticos y Puntos Ciegos</div>
                 <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4 mb-4" id="guiaContenedor"></div>
                 <div class="bg-slate-50 p-6 rounded-2xl mx-4 mb-4">
-                    <p class="field-label mb-4 text-center text-base underline decoration-blue-500 uppercase italic">Evidencia Fotográfica de Marcha (Fotos Completas)</p>
+                    <p class="field-label mb-4 text-center text-base underline decoration-blue-500 uppercase italic">Evidencia Fotográfica de Marcha</p>
                     <div class="photo-grid grid grid-cols-2 md:grid-cols-4 gap-4" id="galeriaMarcha"></div>
                 </div>
             </section>
@@ -291,21 +328,16 @@
             const nameInput = document.getElementById('inspectorName');
             const name = nameInput.value.trim();
             if (!name || !window.certCloud) return;
-
             const initials = name.split(' ').filter(p => p.length > 0).map(n => n[0]).join('').toUpperCase().substring(0, 3);
             const { db, appId, collection, getDocs, addDoc } = window.certCloud;
-            
             const brigRef = collection(db, 'artifacts', appId, 'public', 'data', 'brigadistas');
             const snap = await getDocs(brigRef);
-            
             let assignedNum = null;
             snap.forEach(d => { if (d.data().name.toLowerCase() === name.toLowerCase()) assignedNum = d.data().num; });
-
             if (!assignedNum) {
                 assignedNum = String(snap.size + 1).padStart(2, '0');
                 await addDoc(brigRef, { name, id: `${initials}-${assignedNum}`, num: assignedNum, timestamp: new Date().toISOString() });
             }
-
             document.getElementById('assignedID').value = assignedNum;
             document.getElementById('assignedInitials').value = initials;
             document.getElementById('inspectorIDDisplay').innerText = `ID: ${initials}-${assignedNum}`;
@@ -313,14 +345,8 @@
         }
 
         function handleIdentity() {
-            const data = { 
-                inspector: document.getElementById('inspectorName').value, 
-                equipo: document.getElementById('equipoName').value, 
-                folder: document.getElementById('targetFolder').value, 
-                num: document.getElementById('assignedID').value,
-                initials: document.getElementById('assignedInitials').value
-            };
-            localStorage.setItem('cert_prod_vfinal', JSON.stringify(data));
+            const data = { inspector: document.getElementById('inspectorName').value, equipo: document.getElementById('equipoName').value, folder: document.getElementById('targetFolder').value, num: document.getElementById('assignedID').value, initials: document.getElementById('assignedInitials').value };
+            localStorage.setItem('cert_prod_vfinal_2026', JSON.stringify(data));
             updateFolio();
         }
 
@@ -331,7 +357,7 @@
         }
 
         function loadSession() {
-            const config = JSON.parse(localStorage.getItem('cert_prod_vfinal') || '{}');
+            const config = JSON.parse(localStorage.getItem('cert_prod_vfinal_2026') || '{}');
             if (config.inspector) {
                 document.getElementById('inspectorName').value = config.inspector;
                 document.getElementById('targetFolder').value = config.folder || "";
@@ -339,11 +365,8 @@
                 document.getElementById('assignedID').value = config.num || "";
                 document.getElementById('assignedInitials').value = config.initials || "";
                 if (config.initials && config.num) document.getElementById('inspectorIDDisplay').innerText = `ID: ${config.initials}-${config.num}`;
-                if (parseInt(localStorage.getItem('cert_count_final') || 1) > 1) {
-                    ['inspectorName', 'targetFolder', 'equipoName'].forEach(id => {
-                        const el = document.getElementById(id);
-                        if(el) el.classList.add('input-locked');
-                    });
+                if (parseInt(localStorage.getItem('cert_vcount_2026') || 1) > 1) {
+                    ['inspectorName', 'equipoName'].forEach(id => document.getElementById(id).classList.add('input-locked'));
                     document.getElementById('session-badge')?.classList.remove('hidden');
                 }
             }
@@ -370,17 +393,13 @@
                     document.getElementById('displayCoords').value = coords;
                     btn.innerText = "📍 FIJADO"; btn.classList.replace('bg-slate-900', 'bg-green-700');
                 },
-                (err) => { alert("Error GPS. Use HTTPS en su celular."); btn.innerText = "📍 REINTENTAR"; },
+                (err) => { alert("Error GPS. Use HTTPS."); btn.innerText = "📍 REINTENTAR"; },
                 { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
             );
         }
 
         function openFinalizeModal() {
-            if (!document.getElementById('assignedID').value) { 
-                alert("⚠️ ESPERE: El sistema está asignando su ID de Brigadista..."); 
-                assignInspectorID();
-                return; 
-            }
+            if (!document.getElementById('assignedID').value) { alert("⚠️ ESPERE: Asignando ID..."); assignInspectorID(); return; }
             document.getElementById('finalizeModal').style.display = 'flex';
         }
 
@@ -392,15 +411,12 @@
             const now = new Date();
             const dateLocal = now.toLocaleDateString('es-MX');
             const timeLocal = now.toLocaleTimeString('es-MX');
-
             document.getElementById('sign-name-ui').innerText = name;
             document.getElementById('sign-id-ui').innerText = `ID: ${folio} | ${dateLocal} ${timeLocal}`;
             document.getElementById('visual-signature').classList.remove('hidden');
-
             const oldTitle = document.title;
             document.title = folio; 
             closeFinalizeModal();
-
             if (window.certCloud && window.certCloud.auth.currentUser) {
                 const formData = new FormData(document.getElementById('diagnosticoForm'));
                 const data = { timestamp_utc: now.toISOString(), fecha_captura: dateLocal, hora_captura_final: timeLocal, folio: folio };
@@ -408,13 +424,12 @@
                 try { await window.certCloud.addDoc(window.certCloud.collection(window.certCloud.db, 'artifacts', window.certCloud.appId, 'public', 'data', 'registros_rio'), data); } 
                 catch (e) { console.error("Error nube", e); }
             }
-            
             window.print();
             setTimeout(() => {
                 document.title = oldTitle;
                 if (choice === 'next') {
-                    let count = parseInt(localStorage.getItem('cert_count_final') || 1);
-                    localStorage.setItem('cert_count_final', count + 1);
+                    let count = parseInt(localStorage.getItem('cert_vcount_2026') || 1);
+                    localStorage.setItem('cert_vcount_2026', count + 1);
                     location.reload();
                 } else { exportMasterExcel(); location.reload(); }
             }, 1500);
@@ -424,14 +439,12 @@
             const data = window.globalRecords || [];
             if (data.length === 0) return;
             const wb = XLSX.utils.book_new();
-
             const genData = data.map(r => ({ 
-                "Folio": r.folio, "Fecha": r.fecha_captura, "Inspector": r.inspector, "Lugar": r.lugar_tramo, "GPS": r.gps_coords,
+                "Folio": r.folio, "Fecha": r.fecha_captura, "Inspector": r.inspector, "Tramo": r.lugar_tramo, "GPS": r.gps_coords,
                 "Problemáticas": r.problemas, "Propuestas": r.oportunidades, 
                 "Hallazgo_1": r.guia_0, "Hallazgo_2": r.guia_1, "Hallazgo_3": r.guia_2, "Hallazgo_4": r.guia_3
             }));
             XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(genData), "General y Notas");
-            
             secciones.forEach(sec => {
                 const secData = data.map(r => {
                     const row = { "Folio": r.folio, "Hora Inicio": r[`${sec.prefix}_start_time`] };
@@ -440,8 +453,7 @@
                 });
                 XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(secData), sec.prefix.toUpperCase());
             });
-
-            XLSX.writeFile(wb, `REPORTE_MACRO_CERT_${new Date().toISOString().slice(0,10)}.xlsx`);
+            XLSX.writeFile(wb, `MACRO_CERT_REPORT_${new Date().toISOString().slice(0,10)}.xlsx`);
         }
 
         function updateFolio() {
@@ -451,18 +463,13 @@
             const brigNum = document.getElementById('assignedID').value || "00";
             const now = new Date();
             const dateStr = now.getFullYear().toString() + (now.getMonth() + 1).toString().padStart(2, '0') + now.getDate().toString().padStart(2, '0');
-            const count = String(localStorage.getItem('cert_count_final') || 1).padStart(3, '0');
+            const count = String(localStorage.getItem('cert_vcount_2026') || 1).padStart(3, '0');
             const folio = `CERT-${dateStr}-${initials}-${brigNum}-${count}`;
             document.getElementById('inputFolio').value = folio;
             folioBadge.innerText = folio;
         }
 
-        function confirmReset() { 
-            if (confirm("⚠️ ¿BORRAR TODO? Esto eliminará la identidad del brigadista y regresará el folio al 001.")) { 
-                localStorage.clear(); location.reload(); 
-            } 
-        }
-        
+        function confirmReset() { if (confirm("⚠️ ¿BORRAR TODO? Borrará identidad y contador local.")) { localStorage.clear(); location.reload(); } }
         function prevImg(input, id) {
             const img = document.getElementById(`p_${id}`);
             if (input.files && input.files[0]) {
