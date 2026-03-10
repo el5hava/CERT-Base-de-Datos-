@@ -17,7 +17,6 @@
         import { getFirestore, collection, addDoc, onSnapshot, getDocs, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
-        // CONFIGURACIÓN REAL INTEGRADA
         const firebaseConfig = {
             apiKey: "AIzaSyBvDO1Guh6vnVIiOciqqEQ1jZe0Q5zThwM",
             authDomain: "cert-tecate.firebaseapp.com",
@@ -33,24 +32,18 @@
         const auth = getAuth(app);
         const appId = 'cert-tecate-2026'; 
 
-        // ACTIVACIÓN DE PERSISTENCIA OFFLINE (REGLA MAESTRA)
-        enableIndexedDbPersistence(db).catch((err) => {
-            if (err.code == 'failed-precondition') {
-                console.warn("Persistencia falló: múltiples pestañas abiertas.");
-            } else if (err.code == 'unimplemented') {
-                console.warn("Navegador no soporta persistencia.");
-            }
-        });
+        // Activación de Persistencia para uso en el Río (Offline)
+        enableIndexedDbPersistence(db).catch((err) => console.warn("Modo Offline activado sin caché persistente"));
 
         window.certCloud = { db, auth, appId, collection, addDoc, getDocs };
 
-        signInAnonymously(auth).catch(e => console.error("Error de enlace:", e));
+        signInAnonymously(auth).catch(e => console.error("Error de red:", e));
 
         onAuthStateChanged(auth, (user) => {
             const statusEl = document.getElementById('cloud-status');
             if (user) {
                 statusEl.innerText = "RED ACTIVA";
-                statusEl.className = "bg-emerald-600 px-3 py-0.5 rounded text-[8px] font-black uppercase text-white";
+                statusEl.className = "bg-emerald-600 px-3 py-0.5 rounded text-[8px] font-black uppercase text-white shadow-sm";
                 
                 const recordsRef = collection(db, 'artifacts', appId, 'public', 'data', 'registros_rio');
                 onSnapshot(recordsRef, (snap) => {
@@ -65,268 +58,236 @@
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap');
         
-        body { font-family: 'Inter', sans-serif; background-color: #f1f5f9; color: #000; margin: 0; padding: 5px; -webkit-tap-highlight-color: transparent; }
-        .container-main { max-width: 950px; margin: 10px auto; background: white; border-radius: 24px; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.08); border: 1.5px solid #e2e8f0; }
+        body { font-family: 'Inter', sans-serif; background-color: #f1f5f9; color: #000; margin: 0; padding: 2px; -webkit-tap-highlight-color: transparent; }
+        .container-main { max-width: 950px; margin: 5px auto; background: white; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.08); border: 1.5px solid #e2e8f0; }
         
-        /* ESTILOS DE IMPRESIÓN PARA PDF */
+        /* OPTIMIZACIÓN PDF */
         @media print {
             @page { size: letter; margin: 0.8cm; }
             .no-print { display: none !important; }
             body { background: white; padding: 0; }
-            .page-break { page-break-after: always; }
             .container-main { border: none; width: 100%; max-width: 100%; margin: 0; border-radius: 0; box-shadow: none; }
-            
-            textarea { 
-                border: 1px solid #cbd5e0 !important; 
-                font-size: 10pt !important; 
-                height: auto !important; 
-                min-height: 20px !important; 
-                overflow: hidden !important; 
-                resize: none; 
-                width: 100% !important; 
-                display: block !important; 
-                white-space: pre-wrap !important;
-            }
-
-            .section-block { border: 1.5px solid #e2e8f0; margin-bottom: 10px; padding: 12px !important; break-inside: avoid; border-radius: 12px !important; }
-            .section-header { background: #1e293b !important; color: white !important; -webkit-print-color-adjust: exact; border-radius: 12px 12px 0 0 !important; font-size: 10pt !important; padding: 8px 15px !important; }
-            
-            input[type="radio"] {
-                appearance: none; -webkit-appearance: none;
-                border: 2px solid #000 !important;
-                width: 14px !important; height: 14px !important;
-                border-radius: 50% !important;
-                position: relative;
-                -webkit-print-color-adjust: exact; print-color-adjust: exact;
-            }
-            input[type="radio"]:checked { background-color: #000 !important; border-color: #000 !important; }
-            input[type="radio"]:checked::after {
-                content: ""; position: absolute; top: 2px; left: 2px; width: 6px; height: 6px;
-                border-radius: 50%; background: white !important;
-            }
-
-            .preview-img { 
-                max-height: 4.5in !important; width: auto !important; max-width: 100% !important;
-                object-fit: contain !important; display: block !important; margin: 5px auto !important;
-            }
-            .photo-slot { break-inside: avoid; margin-bottom: 10px; }
-            .signature-box { border-top: 2px solid #000; margin-top: 40px; display: block !important; break-inside: avoid; }
+            textarea { border: 1px solid #cbd5e0 !important; font-size: 10pt !important; height: auto !important; width: 100% !important; display: block !important; }
+            .section-block { border: 1.5px solid #e2e8f0; margin-bottom: 8px; padding: 10px !important; break-inside: avoid; border-radius: 12px !important; }
+            .section-header { background: #1e293b !important; color: white !important; -webkit-print-color-adjust: exact; padding: 8px 15px !important; border-radius: 8px 8px 0 0 !important; }
+            .radio-pill { -webkit-print-color-adjust: exact; print-color-adjust: exact; border: 1px solid #000 !important; }
+            .r-green:checked { background-color: #16a34a !important; }
+            .r-yellow:checked { background-color: #eab308 !important; }
+            .r-red:checked { background-color: #dc2626 !important; }
+            .preview-img { max-height: 4in !important; width: auto !important; object-fit: contain !important; border: none !important; }
+            .signature-box { border-top: 2px solid #000; margin-top: 40px; display: block !important; }
         }
 
-        /* DISEÑO DE INTERFAZ */
+        /* COMPONENTES DE INTERFAZ */
         .field-label { display: block; font-weight: 800; font-size: 0.65rem; color: #1e293b; text-transform: uppercase; margin-bottom: 0.2rem; letter-spacing: 0.05em; }
-        .field-input { width: 100%; background-color: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 0.6rem; font-size: 0.95rem; color: #000; font-weight: 600; transition: all 0.2s; }
-        .input-locked { background-color: #f1f5f9 !important; color: #64748b !important; border: 2px dashed #cbd5e0 !important; pointer-events: none; opacity: 0.8; }
-        .section-header { background-color: #1e293b; color: #fff; padding: 12px 18px; font-weight: 900; text-transform: uppercase; font-size: 0.7rem; border-radius: 14px 14px 0 0; display: flex; align-items: center; justify-content: space-between; }
+        .field-input { width: 100%; background-color: #f8fafc; border: 2.5px solid #e2e8f0; border-radius: 12px; padding: 0.7rem; font-size: 0.95rem; font-weight: 600; color: #000; }
+        .input-locked { background-color: #f1f5f9 !important; color: #64748b !important; border: 2.5px dashed #cbd5e0 !important; pointer-events: none; opacity: 0.8; }
+        .section-header { background-color: #1e293b; color: #fff; padding: 12px 18px; font-weight: 900; text-transform: uppercase; font-size: 0.75rem; border-radius: 15px 15px 0 0; display: flex; align-items: center; justify-content: space-between; }
         
+        /* BOTONES FLOTANTES */
         .sidebar-actions { position: fixed; top: 60px; right: 10px; z-index: 2000; display: flex; flex-direction: column; gap: 8px; }
-        .btn-action { width: 75px; height: 70px; background: white; border: 1.5px solid #e2e8f0; border-radius: 18px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 0.5rem; font-weight: 900; color: #1e293b; box-shadow: 0 4px 12px rgba(0,0,0,0.1); border: none; }
-        .btn-action:active { transform: scale(0.9); }
+        .btn-action { width: 65px; height: 60px; background: white; border: 2px solid #e2e8f0; border-radius: 18px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 0.5rem; font-weight: 900; color: #1e293b; box-shadow: 0 4px 15px rgba(0,0,0,0.1); transition: 0.2s; border: none; }
 
-        .table-container { overflow-x: auto; margin-top: 0; border: 1.5px solid #e2e8f0; border-radius: 0 0 16px 16px; border-top: none; }
-        table { width: 100%; border-collapse: collapse; min-width: 600px; }
-        th { background: #f8fafc; padding: 6px; font-size: 8px; text-transform: uppercase; color: #475569; border-bottom: 1.5px solid #e2e8f0; }
-        td { padding: 6px 12px; border-top: 1px solid #f1f5f9; font-size: 0.75rem; font-weight: 600; color: #000; }
+        /* TABLA SEMÁFORO MEJORADA */
+        .table-container { overflow-x: auto; border: 1.5px solid #e2e8f0; border-radius: 0 0 15px 15px; border-top: none; }
+        table { width: 100%; border-collapse: collapse; min-width: 400px; }
+        th { background: #f8fafc; padding: 6px; font-size: 8px; text-transform: uppercase; color: #475569; border-bottom: 2px solid #e2e8f0; }
+        td { padding: 10px 6px; border-top: 1px solid #f1f5f9; font-size: 0.75rem; font-weight: 700; color: #000; }
         
-        input[type="radio"] { width: 22px; height: 22px; cursor: pointer; accent-color: #1e293b; border: 2px solid #cbd5e0; border-radius: 50%; }
+        .radio-pill { width: 40px; height: 32px; cursor: pointer; appearance: none; -webkit-appearance: none; border: 2px solid #e2e8f0; border-radius: 10px; transition: 0.2s; position: relative; background: #fff; display: flex; align-items: center; justify-content: center; }
+        .radio-pill::before { content: attr(data-label); font-size: 0.6rem; font-weight: 900; color: #94a3b8; }
+        .r-green:checked { background-color: #22c55e; border-color: #16a34a; }
+        .r-yellow:checked { background-color: #facc15; border-color: #ca8a04; }
+        .r-red:checked { background-color: #ef4444; border-color: #dc2626; }
+        .r-gray:checked { background-color: #94a3b8; border-color: #64748b; }
+        .radio-pill:checked::before { color: #fff; }
 
-        .camera-trigger { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; cursor: pointer; padding: 12px; background: #fff; border: 2px dashed #1e293b; border-radius: 16px; transition: 0.2s; min-height: 80px; position: relative; overflow: hidden; }
-        .camera-trigger:hover { background: #f0f9ff; border-style: solid; border-color: #2563eb; }
-        .camera-trigger span { font-size: 1.6rem; }
+        /* BOTÓN DE CÁMARA PURA (SIN EXAMINAR) */
+        .camera-trigger { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; cursor: pointer; padding: 15px; background: #fff; border: 2.5px solid #3b82f6; border-radius: 18px; min-height: 90px; transition: 0.2s; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        .camera-trigger:hover { background: #eff6ff; border-color: #2563eb; }
+        .camera-trigger:active { transform: scale(0.95); }
+        .camera-trigger span { font-size: 2rem; }
+        .camera-trigger b { font-size: 0.65rem; text-transform: uppercase; color: #3b82f6; font-weight: 900; }
         
-        .preview-img { width: 100%; height: auto; max-height: 350px; object-fit: contain; background: #f1f5f9; border-radius: 12px; display: none; margin-top: 8px; border: 1.5px solid #e2e8f0; }
-        .hidden-input { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+        /* Ocultación total del botón examinar nativo */
+        .hidden-input { display: none !important; visibility: hidden !important; width: 0 !important; height: 0 !important; }
 
-        .modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.95); display: none; align-items: center; justify-content: center; z-index: 5000; padding: 15px; backdrop-filter: blur(8px); }
-        .modal-content { background: white; padding: 25px; border-radius: 24px; max-width: 500px; width: 100%; border: 2px solid #e2e8f0; text-align: center; max-height: 90vh; overflow-y: auto; }
+        .preview-img { width: 100%; height: auto; max-height: 400px; object-fit: contain; background: #000; border-radius: 15px; display: none; margin-top: 10px; border: 3px solid #e2e8f0; }
+
+        /* MODALES */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.98); display: none; align-items: center; justify-content: center; z-index: 5000; padding: 15px; backdrop-filter: blur(10px); }
+        .modal-content { background: white; padding: 25px; border-radius: 28px; max-width: 500px; width: 100%; border: 3px solid #e2e8f0; text-align: center; max-height: 90vh; overflow-y: auto; }
         
-        .auto-textarea { width: 100%; background: #fcfcfc; padding: 12px; font-size: 0.95rem; border: 1.5px solid #e2e8f0; border-radius: 12px; min-height: 80px; font-weight: 500; resize: none; overflow: hidden; display: block; }
+        .auto-textarea { width: 100%; background: #fcfcfc; padding: 15px; font-size: 0.95rem; border: 2.5px solid #e2e8f0; border-radius: 15px; min-height: 100px; font-weight: 500; resize: none; overflow: hidden; display: block; }
+        .folio-top-badge { background: #1e293b; color: #fff; padding: 10px 30px; border-radius: 99px; font-weight: 900; font-size: 1.2rem; letter-spacing: 0.1em; display: inline-block; box-shadow: 0 4px 20px rgba(0,0,0,0.2); border: 2px solid #fff; }
         
-        .folio-top-badge { background: #1e293b; color: #fff; padding: 10px 35px; border-radius: 99px; font-weight: 900; font-size: 1.3rem; letter-spacing: 0.1em; display: inline-block; box-shadow: 0 4px 15px rgba(0,0,0,0.3); border: 2px solid #fff; }
-        .btn-decision { width: 100%; padding: 18px; border-radius: 16px; font-weight: 900; text-transform: uppercase; font-size: 0.95rem; margin-bottom: 12px; border: none; cursor: pointer; transition: 0.2s; }
-        .section-time-badge { background: #3b82f6; color: white; padding: 2px 8px; border-radius: 6px; font-size: 9px; font-weight: 800; display: none; }
-        
-        .manual-step { background: #f8fafc; border-left: 4px solid #3b82f6; padding: 10px; margin-bottom: 15px; border-radius: 0 12px 12px 0; }
-        .manual-step h3 { font-weight: 900; color: #1e293b; font-size: 0.75rem; text-transform: uppercase; margin-bottom: 4px; }
-        .manual-step p { font-size: 0.7rem; color: #475569; line-height: 1.4; }
+        .manual-card { background: #f8fafc; border-radius: 15px; padding: 12px; margin-bottom: 12px; border: 1.5px solid #e2e8f0; text-align: left; }
+        .manual-card h3 { font-weight: 900; color: #1e293b; font-size: 0.8rem; display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+        .manual-card p { font-size: 0.75rem; color: #475569; line-height: 1.5; }
     </style>
 </head>
 <body class="bg-slate-100">
 
+    <!-- BARRA DE ESTADO SUPERIOR -->
     <div class="no-print bg-[#1e293b] text-white px-5 py-2 flex justify-between items-center border-b-2 border-blue-600 sticky top-0 z-[1000]">
         <div class="flex items-center gap-3">
-            <span class="text-[9px] font-black uppercase tracking-tighter">● RED BRIGADA CERT TECATE</span>
-            <span id="cloud-status" class="bg-slate-500 px-3 py-0.5 rounded text-[8px]">SIN CONEXIÓN</span>
+            <span class="text-[9px] font-black tracking-tighter">RED BRIGADA CERT</span>
+            <span id="cloud-status" class="bg-slate-500 px-3 py-0.5 rounded text-[8px] font-bold">CONECTANDO...</span>
         </div>
-        <span class="text-[9px] font-bold uppercase text-blue-300">Nube Global: <span id="sync-counter" class="bg-blue-600 px-2 rounded text-white">0</span></span>
+        <span class="text-[9px] font-bold uppercase text-blue-200">En Red: <span id="sync-counter" class="bg-blue-600 px-2 rounded text-white">0</span></span>
     </div>
 
     <!-- MODAL FINALIZACIÓN -->
     <div id="finalizeModal" class="modal-overlay no-print">
         <div class="modal-content shadow-2xl">
-            <div class="text-5xl mb-4">🚀</div>
-            <h2 class="text-2xl font-black text-slate-900 mb-2 uppercase tracking-tighter">Tramo Finalizado</h2>
-            <p class="text-sm text-slate-500 mb-8 px-4">El PDF se guardará con su Folio Único. Si no tiene señal, los datos se sincronizarán solos al recuperar internet.</p>
-            <button onclick="handleFinalizeChoice('next')" class="btn-decision bg-[#1e293b] text-white border-b-8 border-slate-950 uppercase">➕ GUARDAR Y NUEVO REGISTRO</button>
-            <button onclick="handleFinalizeChoice('total')" class="btn-decision bg-blue-600 text-white border-b-8 border-blue-800 uppercase">📊 FINALIZAR JORNADA Y EXCEL</button>
+            <div class="text-5xl mb-4">✅</div>
+            <h2 class="text-2xl font-black text-slate-900 mb-2 uppercase">Tramo Completado</h2>
+            <p class="text-sm text-slate-500 mb-8 px-4">El PDF se descargará automáticamente. Los datos se enviarán a la base de datos maestra de la brigada.</p>
+            <button onclick="handleFinalizeChoice('next')" class="w-full py-5 mb-4 rounded-2xl bg-slate-900 text-white font-black uppercase text-sm shadow-lg">➕ GUARDAR Y NUEVO REGISTRO</button>
+            <button onclick="handleFinalizeChoice('total')" class="w-full py-5 rounded-2xl bg-blue-600 text-white font-black uppercase text-sm shadow-lg">📊 FINALIZAR JORNADA Y EXCEL</button>
             <button onclick="closeFinalizeModal()" class="mt-4 text-xs font-bold text-slate-400 uppercase underline">Seguir editando</button>
         </div>
     </div>
 
     <!-- MODAL MANUAL DE USUARIO INTEGRAL -->
     <div id="manualModal" class="modal-overlay no-print">
-        <div class="modal-content shadow-2xl !text-left">
-            <h2 class="text-xl font-black mb-4 uppercase border-b-4 border-blue-600 pb-2">Manual Integral de Auditoría</h2>
+        <div class="modal-content shadow-2xl">
+            <h2 class="text-xl font-black mb-6 uppercase border-b-4 border-blue-600 pb-2 italic text-slate-900 text-center">Guía de Auditoría Río Tecate</h2>
             
-            <div class="manual-step">
-                <h3>1. Registro e Identidad</h3>
-                <p>Escriba su nombre completo al iniciar. El sistema le asignará un <b>ID único (01-50)</b> sincronizado con la nube colectiva.</p>
+            <div class="manual-card">
+                <h3><span>📸</span> BOTÓN DE CÁMARA</h3>
+                <p>Presione los botones azules <b>"ABRIR CÁMARA"</b>. Se activará la cámara de su dispositivo. El botón "Examinar" ha sido eliminado para mayor velocidad.</p>
             </div>
 
-            <div class="manual-step">
-                <h3>2. Uso Offline (Sin Internet)</h3>
-                <p><b>Importante:</b> Abra la página mientras tenga señal. En el río, puede seguir llenando el formulario y guardando PDFs. Los datos de la nube se enviarán <b>automáticamente</b> en cuanto su dispositivo recupere conexión a internet.</p>
+            <div class="manual-card">
+                <h3><span>📍</span> UBICACIÓN Y GPS</h3>
+                <p>Presione <b>"Fijar GPS"</b> al llegar. Describa el tramo en el campo editable. El sistema guardará la hora exacta de inicio automáticamente.</p>
             </div>
 
-            <div class="manual-step">
-                <h3>3. GPS y Lugar (Editable)</h3>
-                <p>Presione <b>"Fijar Coordenadas"</b> al llegar al punto. En el mismo bloque, describa el lugar o tramo. El GPS funciona por satélite, no requiere internet para obtener coordenadas si el sensor está activo.</p>
+            <div class="manual-card">
+                <h3><span>🚥</span> SEMÁFORO DE RIESGO</h3>
+                <p>Use las tarjetas: <b>V</b> (Bueno), <b>R</b> (Regular) o <b>M</b> (Malo). Al tocarlas, la celda cambiará de color para confirmar su selección.</p>
             </div>
 
-            <div class="manual-step">
-                <h3>4. Guardado de PDF</h3>
-                <p>Al presionar "Finalizar", elija <b>"Guardar como PDF"</b> en su tablet. El sistema pone el nombre del folio automáticamente. Las fotos se verán íntegras y los círculos de opción marcados.</p>
+            <div class="manual-card">
+                <h3><span>📄</span> GUARDADO PDF</h3>
+                <p>Elija "Guardar como PDF". El sistema asigna el <b>Folio CERT</b> como nombre del archivo automáticamente.</p>
             </div>
 
-            <div class="manual-step">
-                <h3>5. Excel Macro (Datos de Todos)</h3>
-                <p>El botón azul une los registros de <b>toda la brigada</b>. Se recomienda descargarlo al final del día una vez que todos los brigadistas hayan recuperado señal y sincronizado sus datos.</p>
-            </div>
-
-            <div class="manual-step">
-                <h3>6. Botón Reiniciar</h3>
-                <p>Use el botón rojo <b>REINICIAR</b> únicamente al cambiar de inspector. Borra su identidad y reinicia el folio al 001.</p>
-            </div>
-
-            <button onclick="closeManual()" class="w-full mt-4 py-4 bg-[#1e293b] text-white font-black rounded-xl uppercase shadow-lg">Cerrar Guía de Campo</button>
+            <button onclick="closeManual()" class="w-full mt-4 py-4 bg-[#1e293b] text-white font-black rounded-xl uppercase shadow-xl transition-all">Entendido</button>
         </div>
     </div>
 
+    <!-- ACCIONES FLOTANTES (TOP RIGHT) -->
     <div class="sidebar-actions no-print">
-        <button type="button" onclick="openManual()" class="btn-action bg-emerald-600 !text-white"><span class="text-2xl">📖</span><span>MANUAL</span></button>
-        <button type="button" onclick="exportMasterExcel()" class="btn-action bg-blue-700 !text-white"><span class="text-2xl">📊</span><span>EXCEL</span></button>
-        <button type="button" onclick="confirmReset()" class="btn-action bg-red-50 text-red-600 border-red-200 border-2"><span class="text-2xl">🧹</span><span>REINICIAR</span></button>
+        <button type="button" onclick="openManual()" class="btn-action bg-emerald-600 !text-white"><span>📖</span>GUÍA</button>
+        <button type="button" onclick="exportMasterExcel()" class="btn-action bg-blue-700 !text-white"><span>📊</span>EXCEL</button>
+        <button type="button" onclick="confirmReset()" class="btn-action bg-red-50 text-red-600 border-red-200 border-2"><span>🧹</span>RESET</button>
     </div>
 
     <div class="container-main">
-        <header class="bg-white p-6 md:p-10 text-center border-b-[10px] border-slate-900">
-            <h1 class="text-2xl font-black uppercase tracking-tighter text-slate-900 leading-none mb-4">Comité Especial del Río Tecate</h1>
-            <div class="space-y-4">
-                <div id="inspectorIDDisplay" class="id-badge">ID: --</div><br>
-                <div id="folioDisplay" class="folio-top-badge italic uppercase tracking-widest">Generando Folio...</div>
-            </div>
-            <p class="text-[10px] text-slate-500 uppercase font-black mt-6 tracking-[0.4em]">Cédula de Sincronización Automática</p>
+        <header class="bg-white p-6 text-center border-b-[10px] border-slate-900">
+            <h1 class="text-xl font-black uppercase tracking-tighter text-slate-900 leading-tight mb-2">Comité Especial del Río Tecate</h1>
+            <div id="inspectorIDDisplay" class="id-badge !text-base !py-1.5 !px-6">ID: --</div><br>
+            <div id="folioDisplay" class="folio-top-badge italic uppercase !text-xs !py-1.5 !px-6 mt-3 shadow-md">Generando Folio...</div>
         </header>
 
         <form id="diagnosticoForm" class="p-4 md:p-10 space-y-4">
             
-            <section class="bg-slate-50 p-6 rounded-3xl border border-slate-200 section-block">
-                <div class="flex justify-between items-center mb-6 border-b border-slate-200 pb-3">
-                    <h3 class="font-black text-xs uppercase text-slate-800 tracking-widest italic">I. Registro de Brigadista</h3>
-                    <div id="session-badge" class="hidden text-[9px] font-black text-white bg-blue-600 px-3 py-1 rounded-lg uppercase tracking-widest">Sesión Validada</div>
+            <!-- TARJETA DE CONTROL E IDENTIDAD -->
+            <section class="bg-slate-50 p-5 rounded-3xl border-2 border-slate-200 section-block">
+                <div class="flex justify-between items-center mb-6 border-b-2 border-slate-200 pb-3">
+                    <h3 class="font-black text-[10px] uppercase text-slate-800 tracking-widest flex items-center gap-2">
+                        <span>👤</span> REGISTRO DE INSPECCIÓN
+                    </h3>
+                    <div id="session-badge" class="hidden text-[8px] font-black text-white bg-blue-600 px-3 py-1 rounded-full uppercase shadow-sm">Sesión Validada</div>
                 </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                         <label class="field-label">Nombre del Inspector</label>
-                        <input type="text" id="inspectorName" name="inspector" class="field-input" placeholder="Nombre completo" onblur="assignInspectorID()">
+                        <input type="text" id="inspectorName" name="inspector" class="field-input" placeholder="Escriba su nombre" onblur="assignInspectorID()">
                     </div>
                     <div>
-                        <label class="field-label">Brigada</label>
-                        <input type="text" id="equipoName" name="equipo" class="field-input" placeholder="Brigada 10" oninput="handleIdentity()">
+                        <label class="field-label">Brigada / Equipo</label>
+                        <input type="text" id="equipoName" name="equipo" class="field-input" placeholder="Ej. Equipo 10" oninput="handleIdentity()">
                     </div>
                 </div>
 
-                <div class="grid grid-cols-2 gap-4 mt-4">
-                    <div class="bg-blue-50 p-3 rounded-xl border border-blue-100 flex flex-col items-center justify-center text-center">
-                        <label class="field-label !mb-0 text-blue-800">FECHA DE CAPTURA</label>
-                        <input type="text" id="inputFecha" name="fecha_auto" class="font-black text-sm border-none bg-transparent text-center text-blue-900" readonly>
-                    </div>
-                    <div class="bg-blue-50 p-3 rounded-xl border border-blue-100 flex flex-col items-center justify-center text-center">
-                        <label class="field-label !mb-0 text-blue-800">HORA DE INICIO</label>
-                        <input type="text" id="inputHora" name="hora_auto" class="font-black text-sm border-none bg-transparent text-center text-blue-900" readonly>
-                    </div>
-                </div>
-
-                <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 bg-white p-5 rounded-3xl border-2 border-blue-100 shadow-sm">
-                    <div class="flex flex-col justify-center space-y-4">
-                        <div class="text-center">
-                            <label class="field-label mb-2 underline decoration-blue-600 font-black uppercase italic">Ubicación Técnica</label>
-                            <button type="button" onclick="getPreciseGPS()" id="btnGPS" class="no-print bg-slate-900 text-white w-full py-5 rounded-2xl text-xs font-black shadow-lg hover:bg-black transition-all">📍 FIJAR COORDENADAS</button>
-                            <input type="text" id="displayCoords" name="gps_coords" class="text-sm font-mono font-black text-blue-900 bg-transparent border-none w-full text-center mt-2" placeholder="ESPERANDO GPS...">
-                            <input type="hidden" id="coords" name="coordenadas">
+                <div class="mt-4 bg-white p-5 rounded-2xl border-2 border-blue-200 shadow-sm space-y-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <div class="space-y-4">
+                            <div class="text-center">
+                                <label class="field-label mb-2 text-blue-700 font-black">LOCALIZACIÓN TÁCTICA</label>
+                                <button type="button" onclick="getPreciseGPS()" id="btnGPS" class="no-print bg-slate-900 text-white w-full py-4 rounded-xl text-xs font-black uppercase shadow-lg">📍 FIJAR GPS Y HORA</button>
+                                <input type="text" id="displayCoords" name="gps_coords" class="text-xs font-mono font-black text-blue-900 bg-transparent border-none w-full text-center mt-2" placeholder="SIN COORDENADAS...">
+                            </div>
+                            <div class="border-t pt-4">
+                                <label class="field-label">LUGAR / TRAMO (EDITABLE)</label>
+                                <input type="text" id="targetFolder" name="lugar_tramo" class="field-input !bg-blue-50/30 !border-blue-100" placeholder="Describa el punto específico" oninput="handleIdentity()">
+                            </div>
                         </div>
-                        <div class="border-t pt-4">
-                            <label class="field-label">Lugar / Tramo Específico (Editable)</label>
-                            <input type="text" id="targetFolder" name="lugar_tramo" class="field-input !bg-white border-blue-200" placeholder="Ej. Puente Encinos - Margen Derecha" oninput="handleIdentity()">
+                        <div class="flex flex-col items-center justify-center border-l-0 md:border-l-2 border-slate-100 pl-0 md:pl-5">
+                            <label class="camera-trigger no-print w-full">
+                                <span>📸</span>
+                                <b>ABRIR CÁMARA UBICACIÓN</b>
+                                <input type="file" accept="image/*" capture="environment" onchange="prevImg(this, 'gps_loc')" class="hidden-input">
+                            </label>
+                            <img id="p_gps_loc" class="preview-img mx-auto">
                         </div>
                     </div>
-                    <div class="border-l-0 md:border-l-2 border-slate-50 pl-0 md:pl-4 flex flex-col items-center justify-center">
-                        <label class="camera-trigger no-print w-full"><span>📸</span><b>Foto de Ubicación</b><input type="file" accept="image/*" capture="environment" onchange="prevImg(this, 'gps_loc')" class="hidden-input"></label>
-                        <img id="p_gps_loc" class="preview-img mx-auto">
-                    </div>
                 </div>
+                <input type="hidden" id="inputFecha" name="fecha_auto">
+                <input type="hidden" id="inputHora" name="hora_auto">
+                <input type="hidden" id="assignedID" name="inspector_id">
+                <input type="hidden" id="assignedInitials" name="inspector_initials">
             </section>
 
-            <div id="tablasContenedor" class="space-y-4"></div>
+            <div id="tablasContenedor" class="space-y-5"></div>
 
-            <section class="page-break section-block border-2 rounded-3xl overflow-hidden bg-white shadow-sm">
-                <div class="section-header"><span>6.</span> Hallazgos Críticos y Puntos Ciegos</div>
-                <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4 mb-4" id="guiaContenedor"></div>
-                <div class="bg-slate-50 p-6 rounded-2xl mx-4 mb-4">
-                    <p class="field-label mb-4 text-center text-base underline decoration-blue-500 uppercase italic">Evidencia Fotográfica de Marcha</p>
-                    <div class="photo-grid grid grid-cols-2 md:grid-cols-4 gap-4" id="galeriaMarcha"></div>
+            <section class="page-break section-block border-2 rounded-3xl overflow-hidden bg-white shadow-sm p-6">
+                <div class="section-header !bg-slate-800 shadow-md"><span>6.</span> Hallazgos Críticos y Puntos Ciegos</div>
+                <div class="grid grid-cols-1 gap-4 mt-4" id="guiaContenedor"></div>
+                
+                <div class="bg-slate-50 p-4 rounded-2xl mt-6 border-2 border-slate-100">
+                    <p class="field-label text-center italic uppercase mb-4 text-slate-500">Evidencia Fotográfica de Marcha</p>
+                    <div class="grid grid-cols-2 gap-4" id="galeriaMarcha"></div>
                 </div>
             </section>
 
             <section class="section-block border-2 rounded-3xl overflow-hidden bg-white shadow-sm p-6 space-y-6">
-                <div class="section-header"><span>7.</span> Conclusiones de Auditoría</div>
-                <div><label class="field-label mb-2">Problemáticas Detectadas</label><textarea name="problemas" class="auto-textarea" oninput="autoResize(this)"></textarea></div>
-                <div><label class="field-label mb-2">Propuestas e Intervenciones</label><textarea name="oportunidades" class="auto-textarea" oninput="autoResize(this)"></textarea></div>
+                <div class="section-header !bg-slate-800 shadow-md"><span>7.</span> Conclusiones de Auditoría</div>
+                <div><label class="field-label">Problemáticas Técnicas Detectadas</label><textarea name="problemas" class="auto-textarea" placeholder="Describa daños, invasiones o riesgos..." oninput="autoResize(this)"></textarea></div>
+                <div><label class="field-label">Propuestas e Intervenciones</label><textarea name="oportunidades" class="auto-textarea" placeholder="¿Qué acciones se recomiendan?" oninput="autoResize(this)"></textarea></div>
             </section>
 
-            <section class="pt-6 pb-40 page-break text-center px-4">
-                <button type="button" onclick="openFinalizeModal()" class="no-print bg-[#1e293b] text-white w-full max-w-md py-10 rounded-3xl shadow-2xl font-black text-2xl active:scale-95 border-b-8 border-slate-950 uppercase">🏁 FINALIZAR REGISTRO</button>
-                <div id="visual-signature" class="hidden signature-box mt-20 pt-10 border-t-4 border-slate-900 bg-white">
-                    <div id="sign-name-ui" class="text-3xl font-black italic mb-2 uppercase text-slate-900"></div>
-                    <p class="text-xs font-black text-slate-600 uppercase tracking-widest border-y py-2 mb-2">Validación de Brigada CERT - Firma Digital</p>
-                    <div id="sign-id-ui" class="text-[10px] font-mono text-slate-400 font-bold uppercase tracking-widest"></div>
+            <section class="pt-6 pb-24 page-break text-center">
+                <button type="button" onclick="openFinalizeModal()" class="no-print bg-[#1e293b] text-white w-full py-10 rounded-3xl shadow-2xl font-black text-2xl active:scale-95 border-b-8 border-slate-950 uppercase transition-all">🏁 FINALIZAR REGISTRO</button>
+                <div id="visual-signature" class="hidden mt-16 pt-8 border-t-4 border-slate-900 bg-white mx-auto max-w-sm">
+                    <div id="sign-name-ui" class="text-2xl font-black italic uppercase text-slate-900"></div>
+                    <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest border-y-2 py-2 mt-2">Validación de Brigada CERT - Firma Digital</p>
+                    <div id="sign-id-ui" class="text-[9px] font-mono text-slate-400 mt-2"></div>
                 </div>
             </section>
 
             <input type="hidden" id="inputFolio" name="folio">
-            <input type="hidden" id="assignedID" name="inspector_id">
-            <input type="hidden" id="assignedInitials" name="inspector_initials">
         </form>
     </div>
 
     <script>
         const secciones = [
-            { titulo: "Infraestructura Urbana", prefix: "infra", icon: "🏗️", headers: ["B", "R", "M", "N/E"], items: ["Flujo del agua", "Contaminación (Basura)", "Sedimentación", "Obstrucciones", "Estabilidad del cauce", "Canalización del río", "Muros de contención", "Estado de estructuras", "Descargas pluviales", "Cantidad de puentes", "Seguridad de cruces"] },
-            { titulo: "Medio Ambiente", prefix: "amb", icon: "🌿", headers: ["Alt", "Med", "Baj", "N/E"], items: ["Vegetación en cauce", "Vegetación ribereña", "Presencia de fauna", "Áreas naturales", "Sombra/Temp.", "Riesgo inundación", "Erosión suelo", "Acumulación residuos", "Infiltración"] },
-            { titulo: "Desarrollo Social", prefix: "soc", icon: "👥", headers: ["Alta", "Med", "Baja", "N/E"], items: ["Viviendas zona federal", "Construcciones irregulares", "Invasión borde río", "Uso informal suelo", "Personas situación calle", "Espacios abandonados", "Áreas comunitarias"] },
-            { titulo: "Seguridad Ciudadana", prefix: "seg", icon: "🛡️", headers: ["B", "R", "M", "N/E"], items: ["Calles cercanas", "Banquetas/Accesos", "Alumbrado público", "Equipamiento urbano", "Vigilancia de zona"] }
+            { titulo: "Infraestructura Urbana", prefix: "infra", icon: "🏗️", items: ["Flujo del agua", "Contaminación (Basura)", "Sedimentación", "Obstrucciones", "Muros de contención", "Estado de estructuras", "Descargas pluviales", "Cantidad de puentes", "Seguridad de cruces"] },
+            { titulo: "Medio Ambiente", prefix: "amb", icon: "🌿", items: ["Vegetación en cauce", "Vegetación ribereña", "Presencia de fauna", "Áreas naturales", "Riesgo inundación", "Erosión suelo", "Residuos", "Infiltración"] },
+            { titulo: "Desarrollo Social", prefix: "soc", icon: "👥", items: ["Viviendas zona federal", "Construcciones irregulares", "Invasión borde río", "Uso informal suelo", "Personas situación calle", "Espacios abandonados", "Áreas comunitarias"] },
+            { titulo: "Seguridad Ciudadana", prefix: "seg", icon: "🛡️", items: ["Calles cercanas", "Banquetas/Accesos", "Alumbrado público", "Equipamiento urbano", "Vigilancia de zona"] }
         ];
-
-        const guiaPuntos = ["Estado Físico Predominante", "Uso Social del Espacio", "Seguridad y Vigilancia", "Manejo de Residuos"];
 
         function autoResize(el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; }
         function openManual() { document.getElementById('manualModal').style.display = 'flex'; }
         function closeManual() { document.getElementById('manualModal').style.display = 'none'; }
 
         async function assignInspectorID() {
-            const nameInput = document.getElementById('inspectorName');
-            const name = nameInput.value.trim();
+            const name = document.getElementById('inspectorName').value.trim();
             if (!name || !window.certCloud) return;
             const initials = name.split(' ').filter(p => p.length > 0).map(n => n[0]).join('').toUpperCase().substring(0, 3);
             const { db, appId, collection, getDocs, addDoc } = window.certCloud;
@@ -346,38 +307,14 @@
 
         function handleIdentity() {
             const data = { inspector: document.getElementById('inspectorName').value, equipo: document.getElementById('equipoName').value, folder: document.getElementById('targetFolder').value, num: document.getElementById('assignedID').value, initials: document.getElementById('assignedInitials').value };
-            localStorage.setItem('cert_prod_vfinal_2026', JSON.stringify(data));
+            localStorage.setItem('cert_session_v10', JSON.stringify(data));
             updateFolio();
-        }
-
-        function updateClock() {
-            const now = new Date();
-            document.getElementById('inputFecha').value = now.toLocaleDateString('es-MX', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, "-");
-            document.getElementById('inputHora').value = now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
-        }
-
-        function loadSession() {
-            const config = JSON.parse(localStorage.getItem('cert_prod_vfinal_2026') || '{}');
-            if (config.inspector) {
-                document.getElementById('inspectorName').value = config.inspector;
-                document.getElementById('targetFolder').value = config.folder || "";
-                document.getElementById('equipoName').value = config.equipo || "";
-                document.getElementById('assignedID').value = config.num || "";
-                document.getElementById('assignedInitials').value = config.initials || "";
-                if (config.initials && config.num) document.getElementById('inspectorIDDisplay').innerText = `ID: ${config.initials}-${config.num}`;
-                if (parseInt(localStorage.getItem('cert_vcount_2026') || 1) > 1) {
-                    ['inspectorName', 'equipoName'].forEach(id => document.getElementById(id).classList.add('input-locked'));
-                    document.getElementById('session-badge')?.classList.remove('hidden');
-                }
-            }
-            updateFolio();
-            updateClock();
         }
 
         function stampSectionTime(prefix) {
             const timeInput = document.querySelector(`input[name="${prefix}_start_time"]`);
             if (timeInput && !timeInput.value) {
-                const now = new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+                const now = new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
                 timeInput.value = now;
                 const badge = document.getElementById(`badge_${prefix}`);
                 if (badge) { badge.innerText = `INICIO: ${now}`; badge.style.display = 'inline-block'; }
@@ -391,15 +328,19 @@
                     const coords = `${p.coords.latitude.toFixed(6)}, ${p.coords.longitude.toFixed(6)}`;
                     document.getElementById('coords').value = coords;
                     document.getElementById('displayCoords').value = coords;
-                    btn.innerText = "📍 FIJADO"; btn.classList.replace('bg-slate-900', 'bg-green-700');
+                    const n = new Date();
+                    document.getElementById('inputFecha').value = n.toLocaleDateString('es-MX');
+                    document.getElementById('inputHora').value = n.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+                    btn.innerText = "📍 POSICIÓN FIJADA"; btn.classList.replace('bg-slate-900', 'bg-green-700');
+                    updateFolio();
                 },
-                (err) => { alert("Error GPS. Use HTTPS."); btn.innerText = "📍 REINTENTAR"; },
+                (err) => { alert("Active GPS y use HTTPS."); btn.innerText = "📍 REINTENTAR"; },
                 { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
             );
         }
 
         function openFinalizeModal() {
-            if (!document.getElementById('assignedID').value) { alert("⚠️ ESPERE: Asignando ID..."); assignInspectorID(); return; }
+            if (!document.getElementById('assignedID').value) { alert("⚠️ REGISTRE SU NOMBRE."); assignInspectorID(); return; }
             document.getElementById('finalizeModal').style.display = 'flex';
         }
 
@@ -419,7 +360,7 @@
             closeFinalizeModal();
             if (window.certCloud && window.certCloud.auth.currentUser) {
                 const formData = new FormData(document.getElementById('diagnosticoForm'));
-                const data = { timestamp_utc: now.toISOString(), fecha_captura: dateLocal, hora_captura_final: timeLocal, folio: folio };
+                const data = { timestamp_utc: now.toISOString(), fecha_captura: dateLocal, hora_final: timeLocal, folio: folio };
                 formData.forEach((v, k) => { if(!(v instanceof File)) data[k] = v; });
                 try { await window.certCloud.addDoc(window.certCloud.collection(window.certCloud.db, 'artifacts', window.certCloud.appId, 'public', 'data', 'registros_rio'), data); } 
                 catch (e) { console.error("Error nube", e); }
@@ -428,8 +369,8 @@
             setTimeout(() => {
                 document.title = oldTitle;
                 if (choice === 'next') {
-                    let count = parseInt(localStorage.getItem('cert_vcount_2026') || 1);
-                    localStorage.setItem('cert_vcount_2026', count + 1);
+                    let count = parseInt(localStorage.getItem('cert_count_v10') || 1);
+                    localStorage.setItem('cert_count_v10', count + 1);
                     location.reload();
                 } else { exportMasterExcel(); location.reload(); }
             }, 1500);
@@ -440,36 +381,35 @@
             if (data.length === 0) return;
             const wb = XLSX.utils.book_new();
             const genData = data.map(r => ({ 
-                "Folio": r.folio, "Fecha": r.fecha_captura, "Inspector": r.inspector, "Tramo": r.lugar_tramo, "GPS": r.gps_coords,
+                "Folio": r.folio, "Fecha": r.fecha_captura, "Inspector": r.inspector, "Lugar": r.lugar_tramo, "GPS": r.gps_coords,
                 "Problemáticas": r.problemas, "Propuestas": r.oportunidades, 
-                "Hallazgo_1": r.guia_0, "Hallazgo_2": r.guia_1, "Hallazgo_3": r.guia_2, "Hallazgo_4": r.guia_3
+                "H1": r.guia_0, "H2": r.guia_1, "H3": r.guia_2, "H4": r.guia_3
             }));
-            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(genData), "General y Notas");
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(genData), "Resumen");
             secciones.forEach(sec => {
                 const secData = data.map(r => {
                     const row = { "Folio": r.folio, "Hora Inicio": r[`${sec.prefix}_start_time`] };
                     sec.items.forEach((item, idx) => { row[item] = r[`${sec.prefix}_v_${idx}`] || "N/E"; });
                     return row;
                 });
-                XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(secData), sec.prefix.toUpperCase());
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(secData), sec.titulo.substring(0, 31));
             });
-            XLSX.writeFile(wb, `MACRO_CERT_REPORT_${new Date().toISOString().slice(0,10)}.xlsx`);
+            XLSX.writeFile(wb, `REPORTE_CERT_RIO_${new Date().toISOString().slice(0,10)}.xlsx`);
         }
 
         function updateFolio() {
-            const folioBadge = document.getElementById('folioDisplay');
-            if (!folioBadge) return;
             const initials = document.getElementById('assignedInitials').value || "XXX";
             const brigNum = document.getElementById('assignedID').value || "00";
             const now = new Date();
             const dateStr = now.getFullYear().toString() + (now.getMonth() + 1).toString().padStart(2, '0') + now.getDate().toString().padStart(2, '0');
-            const count = String(localStorage.getItem('cert_vcount_2026') || 1).padStart(3, '0');
+            const count = String(localStorage.getItem('cert_count_v10') || 1).padStart(3, '0');
             const folio = `CERT-${dateStr}-${initials}-${brigNum}-${count}`;
             document.getElementById('inputFolio').value = folio;
-            folioBadge.innerText = folio;
+            document.getElementById('folioDisplay').innerText = folio;
         }
 
-        function confirmReset() { if (confirm("⚠️ ¿BORRAR TODO? Borrará identidad y contador local.")) { localStorage.clear(); location.reload(); } }
+        function confirmReset() { if (confirm("⚠️ ¿REINICIAR BRIGADA? Borra identidad y contador local.")) { localStorage.clear(); location.reload(); } }
+        
         function prevImg(input, id) {
             const img = document.getElementById(`p_${id}`);
             if (input.files && input.files[0]) {
@@ -484,23 +424,41 @@
             secciones.forEach((sec, sIdx) => {
                 const bNum = sIdx + 2;
                 const sectionDiv = document.createElement('section');
-                sectionDiv.className = "rounded-2xl overflow-hidden border border-slate-200 bg-white shadow-sm section-block";
+                sectionDiv.className = "rounded-2xl overflow-hidden border-2 border-slate-200 bg-white shadow-sm section-block";
+                
                 let rowsHtml = sec.items.map((item, idx) => `
                     <tr>
-                        <td class="font-bold text-slate-800">${item}</td>
-                        <td class="text-center"><input type="radio" name="${sec.prefix}_v_${idx}" value="B" onclick="stampSectionTime('${sec.prefix}')"></td>
-                        <td class="text-center"><input type="radio" name="${sec.prefix}_v_${idx}" value="R" onclick="stampSectionTime('${sec.prefix}')"></td>
-                        <td class="text-center"><input type="radio" name="${sec.prefix}_v_${idx}" value="M" onclick="stampSectionTime('${sec.prefix}')"></td>
-                        <td class="text-center"><input type="radio" name="${sec.prefix}_v_${idx}" value="N/E" onclick="stampSectionTime('${sec.prefix}')"></td>
+                        <td class="font-bold text-slate-800 leading-tight py-3">${item}</td>
+                        <td class="text-center"><input type="radio" class="radio-pill r-green" data-label="V" name="${sec.prefix}_v_${idx}" value="B" onclick="stampSectionTime('${sec.prefix}')"></td>
+                        <td class="text-center"><input type="radio" class="radio-pill r-yellow" data-label="R" name="${sec.prefix}_v_${idx}" value="R" onclick="stampSectionTime('${sec.prefix}')"></td>
+                        <td class="text-center"><input type="radio" class="radio-pill r-red" data-label="M" name="${sec.prefix}_v_${idx}" value="M" onclick="stampSectionTime('${sec.prefix}')"></td>
+                        <td class="text-center"><input type="radio" class="radio-pill r-gray" data-label="-" name="${sec.prefix}_v_${idx}" value="N/E" onclick="stampSectionTime('${sec.prefix}')"></td>
                     </tr>`).join('');
+
                 sectionDiv.innerHTML = `
-                    <div class="section-header">
+                    <div class="section-header !bg-slate-800">
                         <div class="flex items-center gap-3"><span>${bNum}.</span> ${sec.icon} ${sec.titulo}</div>
-                        <div id="badge_${sec.prefix}" class="section-time-badge"></div>
-                        <input type="hidden" name="${sec.prefix}_start_time" value="">
+                        <div id="badge_${sec.prefix}" class="section-time-badge shadow-sm"></div>
+                        <input type="hidden" name="${sec.prefix}_start_time">
                     </div>
-                    <div class="table-container"><table><thead><tr><th class="text-left px-5">Indicador Técnico</th><th>B / Alt</th><th>R / Med</th><th>M / Baj</th><th>N/E</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>
-                    <div class="p-4 bg-slate-50/20"><div class="photo-grid grid grid-cols-2 md:grid-cols-4 gap-4">${[1,2,3,4].map(n => `<div class="photo-slot"><label class="camera-trigger no-print"><span>📸</span><b>Evi ${n}</b><input type="file" accept="image/*" capture="environment" onchange="prevImg(this, '${sec.prefix}_${n}')" class="hidden-input"></label><img id="p_${sec.prefix}_${n}" class="preview-img"></div>`).join('')}</div></div>`;
+                    <div class="table-container">
+                        <table>
+                            <thead><tr><th class="text-left px-4">Indicador Técnico</th><th>B / Alt</th><th>R / Med</th><th>M / Baj</th><th>N/E</th></tr></thead>
+                            <tbody>${rowsHtml}</tbody>
+                        </table>
+                    </div>
+                    <div class="p-4 bg-slate-50/30">
+                        <div class="photo-grid grid grid-cols-2 gap-3">
+                            ${[1,2,3,4].map(n => `<div class="photo-slot">
+                                <label class="camera-trigger no-print">
+                                    <span>📸</span>
+                                    <b>ABRIR CÁMARA ${n}</b>
+                                    <input type="file" accept="image/*" capture="environment" onchange="prevImg(this, '${sec.prefix}_${n}')" class="hidden-input">
+                                </label>
+                                <img id="p_${sec.prefix}_${n}" class="preview-img">
+                            </div>`).join('')}
+                        </div>
+                    </div>`;
                 container.appendChild(sectionDiv);
             });
         }
@@ -508,18 +466,31 @@
         window.onload = () => {
             createTables();
             const guiasCont = document.getElementById('guiaContenedor');
-            guiaPuntos.forEach((item, idx) => {
+            ["Estado Físico", "Uso Social", "Seguridad", "Residuos"].forEach((item, idx) => {
                 const d = document.createElement('div');
-                d.innerHTML = `<label class="field-label">${idx+1}. ${item}</label><textarea name="guia_${idx}" class="auto-textarea" oninput="autoResize(this)"></textarea>`;
+                d.innerHTML = `<label class="field-label">${idx+1}. Observaciones: ${item}</label><textarea name="guia_${idx}" class="auto-textarea" oninput="autoResize(this)"></textarea>`;
                 guiasCont.appendChild(d);
             });
             const galeria = document.getElementById('galeriaMarcha');
-            for(let i=1; i<=8; i++) {
+            for(let i=1; i<=4; i++) {
                 const d = document.createElement('div'); d.className = "photo-slot";
-                d.innerHTML = `<label class="camera-trigger no-print"><span>📸</span><b>CAP ${i}</b><input type="file" accept="image/*" capture="environment" onchange="prevImg(this, 'm_${i}')" class="hidden-input"></label><img id="p_m_${i}" class="preview-img"><textarea name="m_txt_${i}" class="text-[10px] w-full border-t mt-2 text-center p-2 font-bold" rows="1" placeholder="Hallazgo..." oninput="autoResize(this)"></textarea>`;
+                d.innerHTML = `<label class="camera-trigger no-print"><span>📸</span><b>ABRIR CÁMARA MARCH ${i}</b><input type="file" accept="image/*" capture="environment" onchange="prevImg(this, 'm_${i}')" class="hidden-input"></label><img id="p_m_${i}" class="preview-img">`;
                 galeria.appendChild(d);
             }
-            loadSession();
+            const config = JSON.parse(localStorage.getItem('cert_session_v10') || '{}');
+            if (config.inspector) {
+                document.getElementById('inspectorName').value = config.inspector;
+                document.getElementById('equipoName').value = config.equipo || "";
+                document.getElementById('targetFolder').value = config.folder || "";
+                document.getElementById('assignedID').value = config.num || "";
+                document.getElementById('assignedInitials').value = config.initials || "";
+                if (config.initials && config.num) document.getElementById('inspectorIDDisplay').innerText = `ID: ${config.initials}-${config.num}`;
+                if (parseInt(localStorage.getItem('cert_count_v10') || 1) > 1) {
+                    ['inspectorName', 'equipoName'].forEach(id => document.getElementById(id).classList.add('input-locked'));
+                    document.getElementById('session-badge')?.classList.remove('hidden');
+                }
+            }
+            updateFolio();
         };
     </script>
 </body>
