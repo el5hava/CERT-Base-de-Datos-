@@ -32,12 +32,12 @@
         const auth = getAuth(app);
         const appId = 'cert-tecate-2026'; 
 
-        // Activación de Persistencia para uso en el Río (Offline)
-        enableIndexedDbPersistence(db).catch((err) => console.warn("Modo Offline activado sin caché persistente"));
+        // Activación de persistencia para uso en zonas sin señal (Modo Offline)
+        enableIndexedDbPersistence(db).catch((err) => console.warn("Persistencia offline no disponible"));
 
         window.certCloud = { db, auth, appId, collection, addDoc, getDocs };
 
-        signInAnonymously(auth).catch(e => console.error("Error de red:", e));
+        signInAnonymously(auth).catch(e => console.error("Error de enlace:", e));
 
         onAuthStateChanged(auth, (user) => {
             const statusEl = document.getElementById('cloud-status');
@@ -61,7 +61,7 @@
         body { font-family: 'Inter', sans-serif; background-color: #f1f5f9; color: #000; margin: 0; padding: 2px; -webkit-tap-highlight-color: transparent; }
         .container-main { max-width: 950px; margin: 5px auto; background: white; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.08); border: 1.5px solid #e2e8f0; }
         
-        /* OPTIMIZACIÓN PDF */
+        /* ESTILOS DE IMPRESIÓN */
         @media print {
             @page { size: letter; margin: 0.8cm; }
             .no-print { display: none !important; }
@@ -69,32 +69,32 @@
             .container-main { border: none; width: 100%; max-width: 100%; margin: 0; border-radius: 0; box-shadow: none; }
             textarea { border: 1px solid #cbd5e0 !important; font-size: 10pt !important; height: auto !important; width: 100% !important; display: block !important; }
             .section-block { border: 1.5px solid #e2e8f0; margin-bottom: 8px; padding: 10px !important; break-inside: avoid; border-radius: 12px !important; }
-            .section-header { background: #1e293b !important; color: white !important; -webkit-print-color-adjust: exact; padding: 8px 15px !important; border-radius: 8px 8px 0 0 !important; }
+            .section-header { background: #1e293b !important; color: white !important; -webkit-print-color-adjust: exact; padding: 8px 15px !important; }
             .radio-pill { -webkit-print-color-adjust: exact; print-color-adjust: exact; border: 1px solid #000 !important; }
             .r-green:checked { background-color: #16a34a !important; }
             .r-yellow:checked { background-color: #eab308 !important; }
             .r-red:checked { background-color: #dc2626 !important; }
-            .preview-img { max-height: 4in !important; width: auto !important; object-fit: contain !important; border: none !important; }
+            .preview-img { max-height: 4in !important; width: auto !important; object-fit: contain !important; margin: 5px auto !important; border: none !important; }
             .signature-box { border-top: 2px solid #000; margin-top: 40px; display: block !important; }
         }
 
-        /* COMPONENTES DE INTERFAZ */
+        /* DISEÑO DE INTERFAZ */
         .field-label { display: block; font-weight: 800; font-size: 0.65rem; color: #1e293b; text-transform: uppercase; margin-bottom: 0.2rem; letter-spacing: 0.05em; }
-        .field-input { width: 100%; background-color: #f8fafc; border: 2.5px solid #e2e8f0; border-radius: 12px; padding: 0.7rem; font-size: 0.95rem; font-weight: 600; color: #000; }
-        .input-locked { background-color: #f1f5f9 !important; color: #64748b !important; border: 2.5px dashed #cbd5e0 !important; pointer-events: none; opacity: 0.8; }
+        .field-input { width: 100%; background-color: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 0.7rem; font-size: 0.95rem; font-weight: 600; color: #000; }
+        .input-locked { background-color: #f1f5f9 !important; color: #64748b !important; border: 2px dashed #cbd5e0 !important; pointer-events: none; opacity: 0.8; }
         .section-header { background-color: #1e293b; color: #fff; padding: 12px 18px; font-weight: 900; text-transform: uppercase; font-size: 0.75rem; border-radius: 15px 15px 0 0; display: flex; align-items: center; justify-content: space-between; }
         
-        /* BOTONES FLOTANTES */
         .sidebar-actions { position: fixed; top: 60px; right: 10px; z-index: 2000; display: flex; flex-direction: column; gap: 8px; }
-        .btn-action { width: 65px; height: 60px; background: white; border: 2px solid #e2e8f0; border-radius: 18px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 0.5rem; font-weight: 900; color: #1e293b; box-shadow: 0 4px 15px rgba(0,0,0,0.1); transition: 0.2s; border: none; }
+        .btn-action { width: 65px; height: 60px; background: white; border: 2px solid #e2e8f0; border-radius: 18px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 0.5rem; font-weight: 900; color: #1e293b; box-shadow: 0 4px 15px rgba(0,0,0,0.1); transition: 0.2s; }
+        .btn-action:active { transform: scale(0.9); }
 
-        /* TABLA SEMÁFORO MEJORADA */
+        /* SEMÁFORO PILL */
         .table-container { overflow-x: auto; border: 1.5px solid #e2e8f0; border-radius: 0 0 15px 15px; border-top: none; }
-        table { width: 100%; border-collapse: collapse; min-width: 400px; }
+        table { width: 100%; border-collapse: collapse; min-width: 380px; }
         th { background: #f8fafc; padding: 6px; font-size: 8px; text-transform: uppercase; color: #475569; border-bottom: 2px solid #e2e8f0; }
         td { padding: 10px 6px; border-top: 1px solid #f1f5f9; font-size: 0.75rem; font-weight: 700; color: #000; }
         
-        .radio-pill { width: 40px; height: 32px; cursor: pointer; appearance: none; -webkit-appearance: none; border: 2px solid #e2e8f0; border-radius: 10px; transition: 0.2s; position: relative; background: #fff; display: flex; align-items: center; justify-content: center; }
+        .radio-pill { width: 38px; height: 32px; cursor: pointer; appearance: none; -webkit-appearance: none; border: 2px solid #e2e8f0; border-radius: 10px; transition: 0.2s; position: relative; background: #fff; display: flex; align-items: center; justify-content: center; }
         .radio-pill::before { content: attr(data-label); font-size: 0.6rem; font-weight: 900; color: #94a3b8; }
         .r-green:checked { background-color: #22c55e; border-color: #16a34a; }
         .r-yellow:checked { background-color: #facc15; border-color: #ca8a04; }
@@ -102,39 +102,32 @@
         .r-gray:checked { background-color: #94a3b8; border-color: #64748b; }
         .radio-pill:checked::before { color: #fff; }
 
-        /* BOTÓN DE CÁMARA PURA (SIN EXAMINAR) */
-        .camera-trigger { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; cursor: pointer; padding: 15px; background: #fff; border: 2.5px solid #3b82f6; border-radius: 18px; min-height: 90px; transition: 0.2s; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
-        .camera-trigger:hover { background: #eff6ff; border-color: #2563eb; }
-        .camera-trigger:active { transform: scale(0.95); }
+        /* BOTÓN DE CÁMARA */
+        .camera-trigger { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; cursor: pointer; padding: 15px; background: #fff; border: 2.5px solid #3b82f6; border-radius: 18px; min-height: 90px; transition: 0.2s; }
         .camera-trigger span { font-size: 2rem; }
         .camera-trigger b { font-size: 0.65rem; text-transform: uppercase; color: #3b82f6; font-weight: 900; }
-        
-        /* Ocultación total del botón examinar nativo */
-        .hidden-input { display: none !important; visibility: hidden !important; width: 0 !important; height: 0 !important; }
+        .hidden-input { display: none !important; }
 
         .preview-img { width: 100%; height: auto; max-height: 400px; object-fit: contain; background: #000; border-radius: 15px; display: none; margin-top: 10px; border: 3px solid #e2e8f0; }
-
-        /* MODALES */
-        .modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.98); display: none; align-items: center; justify-content: center; z-index: 5000; padding: 15px; backdrop-filter: blur(10px); }
-        .modal-content { background: white; padding: 25px; border-radius: 28px; max-width: 500px; width: 100%; border: 3px solid #e2e8f0; text-align: center; max-height: 90vh; overflow-y: auto; }
-        
         .auto-textarea { width: 100%; background: #fcfcfc; padding: 15px; font-size: 0.95rem; border: 2.5px solid #e2e8f0; border-radius: 15px; min-height: 100px; font-weight: 500; resize: none; overflow: hidden; display: block; }
-        .folio-top-badge { background: #1e293b; color: #fff; padding: 10px 30px; border-radius: 99px; font-weight: 900; font-size: 1.2rem; letter-spacing: 0.1em; display: inline-block; box-shadow: 0 4px 20px rgba(0,0,0,0.2); border: 2px solid #fff; }
         
-        .manual-card { background: #f8fafc; border-radius: 15px; padding: 12px; margin-bottom: 12px; border: 1.5px solid #e2e8f0; text-align: left; }
-        .manual-card h3 { font-weight: 900; color: #1e293b; font-size: 0.8rem; display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
-        .manual-card p { font-size: 0.75rem; color: #475569; line-height: 1.5; }
+        /* ESTILOS DEL MANUAL EXPANDIDO */
+        .manual-card { background: #f8fafc; border-radius: 15px; padding: 15px; margin-bottom: 15px; border: 1.5px solid #e2e8f0; text-align: left; }
+        .manual-card h3 { font-weight: 900; color: #1e293b; font-size: 0.85rem; display: flex; align-items: center; gap: 10px; margin-bottom: 8px; border-bottom: 2px solid #e2e8f0; padding-bottom: 5px; }
+        .manual-card p { font-size: 0.75rem; color: #475569; line-height: 1.5; margin-bottom: 5px; }
+        .manual-card b { color: #1e293b; }
+        .modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.98); display: none; align-items: center; justify-content: center; z-index: 5000; padding: 15px; backdrop-filter: blur(10px); }
+        .modal-content { background: white; padding: 25px; border-radius: 28px; max-width: 550px; width: 100%; border: 3px solid #e2e8f0; text-align: center; max-height: 90vh; overflow-y: auto; }
     </style>
 </head>
 <body class="bg-slate-100">
 
-    <!-- BARRA DE ESTADO SUPERIOR -->
     <div class="no-print bg-[#1e293b] text-white px-5 py-2 flex justify-between items-center border-b-2 border-blue-600 sticky top-0 z-[1000]">
         <div class="flex items-center gap-3">
             <span class="text-[9px] font-black tracking-tighter">RED BRIGADA CERT</span>
             <span id="cloud-status" class="bg-slate-500 px-3 py-0.5 rounded text-[8px] font-bold">CONECTANDO...</span>
         </div>
-        <span class="text-[9px] font-bold uppercase text-blue-200">En Red: <span id="sync-counter" class="bg-blue-600 px-2 rounded text-white">0</span></span>
+        <span class="text-[9px] font-bold uppercase text-blue-200">Sincronizados: <span id="sync-counter" class="bg-blue-600 px-2 rounded text-white">0</span></span>
     </div>
 
     <!-- MODAL FINALIZACIÓN -->
@@ -149,32 +142,51 @@
         </div>
     </div>
 
-    <!-- MODAL MANUAL DE USUARIO INTEGRAL -->
+    <!-- MODAL MANUAL DE USUARIO INTEGRAL EXPANDIDO -->
     <div id="manualModal" class="modal-overlay no-print">
         <div class="modal-content shadow-2xl">
-            <h2 class="text-xl font-black mb-6 uppercase border-b-4 border-blue-600 pb-2 italic text-slate-900 text-center">Guía de Auditoría Río Tecate</h2>
+            <h2 class="text-xl font-black mb-6 uppercase border-b-4 border-blue-600 pb-2 italic text-slate-900 text-center">Manual Integral de Auditoría</h2>
             
             <div class="manual-card">
-                <h3><span>📸</span> BOTÓN DE CÁMARA</h3>
-                <p>Presione los botones azules <b>"ABRIR CÁMARA"</b>. Se activará la cámara de su dispositivo. El botón "Examinar" ha sido eliminado para mayor velocidad.</p>
+                <h3><span>👤</span> 1. IDENTIDAD Y REGISTRO</h3>
+                <p>Al llegar, escriba su <b>Nombre</b> y su <b>Brigada</b>. El sistema le asignará automáticamente un <b>ID único (01-50)</b> sincronizado en la nube. Esta sesión se bloquea tras el primer registro para evitar errores.</p>
             </div>
 
             <div class="manual-card">
-                <h3><span>📍</span> UBICACIÓN Y GPS</h3>
-                <p>Presione <b>"Fijar GPS"</b> al llegar. Describa el tramo en el campo editable. El sistema guardará la hora exacta de inicio automáticamente.</p>
+                <h3><span>📍</span> 2. GPS Y LOCALIZACIÓN</h3>
+                <p>Presione el botón negro <b>"FIJAR POSICIÓN GPS"</b>. El sistema capturará las coordenadas exactas y registrará la hora de inicio del tramo. El campo <b>"Lugar / Tramo"</b> es editable para descripciones específicas.</p>
             </div>
 
             <div class="manual-card">
-                <h3><span>🚥</span> SEMÁFORO DE RIESGO</h3>
-                <p>Use las tarjetas: <b>V</b> (Bueno), <b>R</b> (Regular) o <b>M</b> (Malo). Al tocarlas, la celda cambiará de color para confirmar su selección.</p>
+                <h3><span>🚥</span> 3. EVALUACIÓN TÉCNICA (SEMÁFORO)</h3>
+                <p>Use las tarjetas de colores para calificar indicadores:</p>
+                <p>🟢 <b>V (Verde):</b> Bueno / Alta presencia.</p>
+                <p>🟡 <b>R (Amarillo):</b> Regular / Media presencia.</p>
+                <p>🔴 <b>M (Rojo):</b> Malo / Baja presencia / Riesgo Crítico.</p>
+                <p>⚪ <b>- (Gris):</b> No Evaluado o No Aplica.</p>
             </div>
 
             <div class="manual-card">
-                <h3><span>📄</span> GUARDADO PDF</h3>
-                <p>Elija "Guardar como PDF". El sistema asigna el <b>Folio CERT</b> como nombre del archivo automáticamente.</p>
+                <h3><span>📸</span> 4. CAPTURA DE EVIDENCIA</h3>
+                <p>Use los botones azules <b>"ABRIR CÁMARA"</b>. Se activará la cámara trasera de su dispositivo. Debe tomar 4 fotos por sección y 1 de ubicación para que el reporte tenga validez técnica.</p>
             </div>
 
-            <button onclick="closeManual()" class="w-full mt-4 py-4 bg-[#1e293b] text-white font-black rounded-xl uppercase shadow-xl transition-all">Entendido</button>
+            <div class="manual-card">
+                <h3><span>📄</span> 5. FINALIZACIÓN Y PDF</h3>
+                <p>Al presionar <b>"Finalizar"</b>, el sistema generará un PDF. Elija <b>"Guardar como PDF"</b> en el menú de impresión. El archivo se nombrará automáticamente con su <b>Folio CERT</b> (Fecha-ID-Contador).</p>
+            </div>
+
+            <div class="manual-card">
+                <h3><span>📡</span> 6. MODO OFFLINE (RÍO)</h3>
+                <p>Si no tiene internet en el cauce, <b>siga trabajando normal</b>. La página guarda los datos internamente y los enviará a la nube de Google automáticamente en cuanto recupere señal al final de la jornada.</p>
+            </div>
+
+            <div class="manual-card">
+                <h3><span>📊</span> 7. EXCEL MACRO</h3>
+                <p>El botón azul <b>EXCEL</b> descarga una base de datos con los registros de <b>todos los brigadistas</b>. Es ideal para que el coordinador vea el avance global en tiempo real.</p>
+            </div>
+
+            <button onclick="closeManual()" class="w-full mt-4 py-4 bg-[#1e293b] text-white font-black rounded-xl uppercase shadow-xl transition-all hover:bg-black active:scale-95">Entendido, ir al campo</button>
         </div>
     </div>
 
@@ -188,44 +200,52 @@
     <div class="container-main">
         <header class="bg-white p-6 text-center border-b-[10px] border-slate-900">
             <h1 class="text-xl font-black uppercase tracking-tighter text-slate-900 leading-tight mb-2">Comité Especial del Río Tecate</h1>
-            <div id="inspectorIDDisplay" class="id-badge !text-base !py-1.5 !px-6">ID: --</div><br>
-            <div id="folioDisplay" class="folio-top-badge italic uppercase !text-xs !py-1.5 !px-6 mt-3 shadow-md">Generando Folio...</div>
+            <div id="inspectorIDDisplay" class="id-badge bg-black text-white px-4 py-1 rounded-full text-sm font-black border-2 border-blue-500 inline-block">ID: --</div><br>
+            <div id="folioDisplay" class="bg-slate-800 text-white italic uppercase text-xs py-1.5 px-6 rounded-full mt-3 shadow-md inline-block">Generando Folio...</div>
         </header>
 
         <form id="diagnosticoForm" class="p-4 md:p-10 space-y-4">
             
-            <!-- TARJETA DE CONTROL E IDENTIDAD -->
-            <section class="bg-slate-50 p-5 rounded-3xl border-2 border-slate-200 section-block">
+            <!-- BLOQUE I: REGISTRO E IDENTIDAD -->
+            <section class="bg-slate-50 p-6 rounded-3xl border-2 border-slate-200 section-block shadow-sm">
                 <div class="flex justify-between items-center mb-6 border-b-2 border-slate-200 pb-3">
-                    <h3 class="font-black text-[10px] uppercase text-slate-800 tracking-widest flex items-center gap-2">
-                        <span>👤</span> REGISTRO DE INSPECCIÓN
-                    </h3>
-                    <div id="session-badge" class="hidden text-[8px] font-black text-white bg-blue-600 px-3 py-1 rounded-full uppercase shadow-sm">Sesión Validada</div>
+                    <h3 class="font-black text-[10px] uppercase text-slate-800 tracking-widest italic">I. Registro de Inspector</h3>
+                    <div id="session-badge" class="hidden text-[8px] font-black text-white bg-blue-600 px-3 py-1 rounded-full uppercase">Sesión Validada</div>
                 </div>
 
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
                         <label class="field-label">Nombre del Inspector</label>
-                        <input type="text" id="inspectorName" name="inspector" class="field-input" placeholder="Escriba su nombre" onblur="assignInspectorID()">
+                        <input type="text" id="inspectorName" name="inspector" class="field-input" placeholder="Nombre completo" onblur="assignInspectorID()">
                     </div>
                     <div>
-                        <label class="field-label">Brigada / Equipo</label>
-                        <input type="text" id="equipoName" name="equipo" class="field-input" placeholder="Ej. Equipo 10" oninput="handleIdentity()">
+                        <label class="field-label">Lugar / Tramo</label>
+                        <input type="text" id="targetFolder" name="lugar_tramo" class="field-input" placeholder="Ej. Margen Derecha" oninput="handleIdentity()">
+                    </div>
+                    <div>
+                        <label class="field-label">Brigada</label>
+                        <input type="text" id="equipoName" name="equipo" class="field-input" placeholder="Equipo 10" oninput="handleIdentity()">
                     </div>
                 </div>
 
-                <div class="mt-4 bg-white p-5 rounded-2xl border-2 border-blue-200 shadow-sm space-y-4">
+                <div class="grid grid-cols-2 gap-4 mt-4">
+                    <div class="bg-white p-3 rounded-xl border border-slate-200 text-center shadow-inner">
+                        <label class="field-label !mb-0 text-blue-700">Fecha Actual</label>
+                        <input type="text" id="inputFecha" name="fecha_auto" class="font-black text-sm border-none bg-transparent text-center" readonly>
+                    </div>
+                    <div class="bg-white p-3 rounded-xl border border-slate-200 text-center shadow-inner">
+                        <label class="field-label !mb-0 text-blue-700">Hora de Inicio</label>
+                        <input type="text" id="inputHora" name="hora_auto" class="font-black text-sm border-none bg-transparent text-center" readonly>
+                    </div>
+                </div>
+
+                <!-- GPS -->
+                <div class="mt-4 bg-white p-5 rounded-2xl border-2 border-blue-200 shadow-sm">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-                        <div class="space-y-4">
-                            <div class="text-center">
-                                <label class="field-label mb-2 text-blue-700 font-black">LOCALIZACIÓN TÁCTICA</label>
-                                <button type="button" onclick="getPreciseGPS()" id="btnGPS" class="no-print bg-slate-900 text-white w-full py-4 rounded-xl text-xs font-black uppercase shadow-lg">📍 FIJAR GPS Y HORA</button>
-                                <input type="text" id="displayCoords" name="gps_coords" class="text-xs font-mono font-black text-blue-900 bg-transparent border-none w-full text-center mt-2" placeholder="SIN COORDENADAS...">
-                            </div>
-                            <div class="border-t pt-4">
-                                <label class="field-label">LUGAR / TRAMO (EDITABLE)</label>
-                                <input type="text" id="targetFolder" name="lugar_tramo" class="field-input !bg-blue-50/30 !border-blue-100" placeholder="Describa el punto específico" oninput="handleIdentity()">
-                            </div>
+                        <div class="text-center flex flex-col justify-center">
+                            <label class="field-label mb-3 font-black">Coordenadas Satelitales</label>
+                            <button type="button" onclick="getPreciseGPS()" id="btnGPS" class="no-print bg-slate-900 text-white w-full py-4 rounded-xl text-xs font-black uppercase shadow-lg hover:bg-black transition-all">📍 FIJAR POSICIÓN GPS</button>
+                            <input type="text" id="displayCoords" name="gps_coords" class="text-xs font-mono font-black text-blue-900 bg-transparent border-none w-full text-center mt-3" placeholder="ESPERANDO SATÉLITE...">
                         </div>
                         <div class="flex flex-col items-center justify-center border-l-0 md:border-l-2 border-slate-100 pl-0 md:pl-5">
                             <label class="camera-trigger no-print w-full">
@@ -233,32 +253,29 @@
                                 <b>ABRIR CÁMARA UBICACIÓN</b>
                                 <input type="file" accept="image/*" capture="environment" onchange="prevImg(this, 'gps_loc')" class="hidden-input">
                             </label>
-                            <img id="p_gps_loc" class="preview-img mx-auto">
+                            <img id="p_gps_loc" class="preview-img mx-auto shadow-lg">
                         </div>
                     </div>
                 </div>
-                <input type="hidden" id="inputFecha" name="fecha_auto">
-                <input type="hidden" id="inputHora" name="hora_auto">
-                <input type="hidden" id="assignedID" name="inspector_id">
-                <input type="hidden" id="assignedInitials" name="inspector_initials">
+                <input type="hidden" id="coords" name="coordenadas">
             </section>
 
             <div id="tablasContenedor" class="space-y-5"></div>
 
             <section class="page-break section-block border-2 rounded-3xl overflow-hidden bg-white shadow-sm p-6">
-                <div class="section-header !bg-slate-800 shadow-md"><span>6.</span> Hallazgos Críticos y Puntos Ciegos</div>
+                <div class="section-header !bg-slate-800 shadow-md"><span>6.</span> Hallazgos Críticos</div>
                 <div class="grid grid-cols-1 gap-4 mt-4" id="guiaContenedor"></div>
                 
-                <div class="bg-slate-50 p-4 rounded-2xl mt-6 border-2 border-slate-100">
+                <div class="bg-slate-50 p-4 rounded-2xl mt-6 border-2 border-slate-100 shadow-inner">
                     <p class="field-label text-center italic uppercase mb-4 text-slate-500">Evidencia Fotográfica de Marcha</p>
                     <div class="grid grid-cols-2 gap-4" id="galeriaMarcha"></div>
                 </div>
             </section>
 
             <section class="section-block border-2 rounded-3xl overflow-hidden bg-white shadow-sm p-6 space-y-6">
-                <div class="section-header !bg-slate-800 shadow-md"><span>7.</span> Conclusiones de Auditoría</div>
-                <div><label class="field-label">Problemáticas Técnicas Detectadas</label><textarea name="problemas" class="auto-textarea" placeholder="Describa daños, invasiones o riesgos..." oninput="autoResize(this)"></textarea></div>
-                <div><label class="field-label">Propuestas e Intervenciones</label><textarea name="oportunidades" class="auto-textarea" placeholder="¿Qué acciones se recomiendan?" oninput="autoResize(this)"></textarea></div>
+                <div class="section-header !bg-slate-800 shadow-md"><span>7.</span> Conclusiones Técnicas</div>
+                <div><label class="field-label">Problemáticas Técnicas Detectadas</label><textarea name="problemas" class="auto-textarea" oninput="autoResize(this)" placeholder="Describa daños o riesgos..."></textarea></div>
+                <div><label class="field-label">Propuestas e Intervenciones</label><textarea name="oportunidades" class="auto-textarea" oninput="autoResize(this)" placeholder="¿Qué recomienda hacer?"></textarea></div>
             </section>
 
             <section class="pt-6 pb-24 page-break text-center">
@@ -271,13 +288,15 @@
             </section>
 
             <input type="hidden" id="inputFolio" name="folio">
+            <input type="hidden" id="assignedID" name="inspector_id">
+            <input type="hidden" id="assignedInitials" name="inspector_initials">
         </form>
     </div>
 
     <script>
         const secciones = [
             { titulo: "Infraestructura Urbana", prefix: "infra", icon: "🏗️", items: ["Flujo del agua", "Contaminación (Basura)", "Sedimentación", "Obstrucciones", "Muros de contención", "Estado de estructuras", "Descargas pluviales", "Cantidad de puentes", "Seguridad de cruces"] },
-            { titulo: "Medio Ambiente", prefix: "amb", icon: "🌿", items: ["Vegetación en cauce", "Vegetación ribereña", "Presencia de fauna", "Áreas naturales", "Riesgo inundación", "Erosión suelo", "Residuos", "Infiltración"] },
+            { titulo: "Medio Ambiente", prefix: "amb", icon: "🌿", items: ["Vegetación en cauce", "Vegetación ribereña", "Presencia de fauna", "Áreas naturales", "Riesgo inundación", "Erosión suelo", "Acumulación residuos", "Infiltración"] },
             { titulo: "Desarrollo Social", prefix: "soc", icon: "👥", items: ["Viviendas zona federal", "Construcciones irregulares", "Invasión borde río", "Uso informal suelo", "Personas situación calle", "Espacios abandonados", "Áreas comunitarias"] },
             { titulo: "Seguridad Ciudadana", prefix: "seg", icon: "🛡️", items: ["Calles cercanas", "Banquetas/Accesos", "Alumbrado público", "Equipamiento urbano", "Vigilancia de zona"] }
         ];
@@ -307,18 +326,14 @@
 
         function handleIdentity() {
             const data = { inspector: document.getElementById('inspectorName').value, equipo: document.getElementById('equipoName').value, folder: document.getElementById('targetFolder').value, num: document.getElementById('assignedID').value, initials: document.getElementById('assignedInitials').value };
-            localStorage.setItem('cert_session_v10', JSON.stringify(data));
+            localStorage.setItem('cert_session_v11', JSON.stringify(data));
             updateFolio();
         }
 
-        function stampSectionTime(prefix) {
-            const timeInput = document.querySelector(`input[name="${prefix}_start_time"]`);
-            if (timeInput && !timeInput.value) {
-                const now = new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                timeInput.value = now;
-                const badge = document.getElementById(`badge_${prefix}`);
-                if (badge) { badge.innerText = `INICIO: ${now}`; badge.style.display = 'inline-block'; }
-            }
+        function updateClock() {
+            const now = new Date();
+            document.getElementById('inputFecha').value = now.toLocaleDateString('es-MX');
+            document.getElementById('inputHora').value = now.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
         }
 
         function getPreciseGPS() {
@@ -328,11 +343,8 @@
                     const coords = `${p.coords.latitude.toFixed(6)}, ${p.coords.longitude.toFixed(6)}`;
                     document.getElementById('coords').value = coords;
                     document.getElementById('displayCoords').value = coords;
-                    const n = new Date();
-                    document.getElementById('inputFecha').value = n.toLocaleDateString('es-MX');
-                    document.getElementById('inputHora').value = n.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
                     btn.innerText = "📍 POSICIÓN FIJADA"; btn.classList.replace('bg-slate-900', 'bg-green-700');
-                    updateFolio();
+                    updateClock();
                 },
                 (err) => { alert("Active GPS y use HTTPS."); btn.innerText = "📍 REINTENTAR"; },
                 { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
@@ -369,8 +381,8 @@
             setTimeout(() => {
                 document.title = oldTitle;
                 if (choice === 'next') {
-                    let count = parseInt(localStorage.getItem('cert_count_v10') || 1);
-                    localStorage.setItem('cert_count_v10', count + 1);
+                    let count = parseInt(localStorage.getItem('cert_count_v11') || 1);
+                    localStorage.setItem('cert_count_v11', count + 1);
                     location.reload();
                 } else { exportMasterExcel(); location.reload(); }
             }, 1500);
@@ -385,16 +397,16 @@
                 "Problemáticas": r.problemas, "Propuestas": r.oportunidades, 
                 "H1": r.guia_0, "H2": r.guia_1, "H3": r.guia_2, "H4": r.guia_3
             }));
-            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(genData), "Resumen");
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(genData), "Resumen General");
             secciones.forEach(sec => {
                 const secData = data.map(r => {
-                    const row = { "Folio": r.folio, "Hora Inicio": r[`${sec.prefix}_start_time`] };
+                    const row = { "Folio": r.folio };
                     sec.items.forEach((item, idx) => { row[item] = r[`${sec.prefix}_v_${idx}`] || "N/E"; });
                     return row;
                 });
                 XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(secData), sec.titulo.substring(0, 31));
             });
-            XLSX.writeFile(wb, `REPORTE_CERT_RIO_${new Date().toISOString().slice(0,10)}.xlsx`);
+            XLSX.writeFile(wb, `MACRO_CERT_REPORT_${new Date().toISOString().slice(0,10)}.xlsx`);
         }
 
         function updateFolio() {
@@ -402,7 +414,7 @@
             const brigNum = document.getElementById('assignedID').value || "00";
             const now = new Date();
             const dateStr = now.getFullYear().toString() + (now.getMonth() + 1).toString().padStart(2, '0') + now.getDate().toString().padStart(2, '0');
-            const count = String(localStorage.getItem('cert_count_v10') || 1).padStart(3, '0');
+            const count = String(localStorage.getItem('cert_count_v11') || 1).padStart(3, '0');
             const folio = `CERT-${dateStr}-${initials}-${brigNum}-${count}`;
             document.getElementById('inputFolio').value = folio;
             document.getElementById('folioDisplay').innerText = folio;
@@ -425,45 +437,34 @@
                 const bNum = sIdx + 2;
                 const sectionDiv = document.createElement('section');
                 sectionDiv.className = "rounded-2xl overflow-hidden border-2 border-slate-200 bg-white shadow-sm section-block";
-                
                 let rowsHtml = sec.items.map((item, idx) => `
                     <tr>
                         <td class="font-bold text-slate-800 leading-tight py-3">${item}</td>
-                        <td class="text-center"><input type="radio" class="radio-pill r-green" data-label="V" name="${sec.prefix}_v_${idx}" value="B" onclick="stampSectionTime('${sec.prefix}')"></td>
-                        <td class="text-center"><input type="radio" class="radio-pill r-yellow" data-label="R" name="${sec.prefix}_v_${idx}" value="R" onclick="stampSectionTime('${sec.prefix}')"></td>
-                        <td class="text-center"><input type="radio" class="radio-pill r-red" data-label="M" name="${sec.prefix}_v_${idx}" value="M" onclick="stampSectionTime('${sec.prefix}')"></td>
-                        <td class="text-center"><input type="radio" class="radio-pill r-gray" data-label="-" name="${sec.prefix}_v_${idx}" value="N/E" onclick="stampSectionTime('${sec.prefix}')"></td>
+                        <td class="text-center"><input type="radio" class="radio-pill r-green" data-label="V" name="${sec.prefix}_v_${idx}" value="B"></td>
+                        <td class="text-center"><input type="radio" class="radio-pill r-yellow" data-label="R" name="${sec.prefix}_v_${idx}" value="R"></td>
+                        <td class="text-center"><input type="radio" class="radio-pill r-red" data-label="M" name="${sec.prefix}_v_${idx}" value="M"></td>
+                        <td class="text-center"><input type="radio" class="radio-pill r-gray" data-label="-" name="${sec.prefix}_v_${idx}" value="N/E"></td>
                     </tr>`).join('');
-
                 sectionDiv.innerHTML = `
                     <div class="section-header !bg-slate-800">
                         <div class="flex items-center gap-3"><span>${bNum}.</span> ${sec.icon} ${sec.titulo}</div>
-                        <div id="badge_${sec.prefix}" class="section-time-badge shadow-sm"></div>
-                        <input type="hidden" name="${sec.prefix}_start_time">
                     </div>
-                    <div class="table-container">
-                        <table>
-                            <thead><tr><th class="text-left px-4">Indicador Técnico</th><th>B / Alt</th><th>R / Med</th><th>M / Baj</th><th>N/E</th></tr></thead>
-                            <tbody>${rowsHtml}</tbody>
-                        </table>
-                    </div>
-                    <div class="p-4 bg-slate-50/30">
-                        <div class="photo-grid grid grid-cols-2 gap-3">
-                            ${[1,2,3,4].map(n => `<div class="photo-slot">
-                                <label class="camera-trigger no-print">
-                                    <span>📸</span>
-                                    <b>ABRIR CÁMARA ${n}</b>
-                                    <input type="file" accept="image/*" capture="environment" onchange="prevImg(this, '${sec.prefix}_${n}')" class="hidden-input">
-                                </label>
-                                <img id="p_${sec.prefix}_${n}" class="preview-img">
-                            </div>`).join('')}
-                        </div>
-                    </div>`;
+                    <div class="table-container"><table><thead><tr><th class="text-left px-4">Indicador Técnico</th><th>Bueno</th><th>Reg</th><th>Malo</th><th>N/E</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>
+                    <div class="p-4 bg-slate-50/30"><div class="photo-grid grid grid-cols-2 gap-3">
+                        ${[1,2,3,4].map(n => `<div class="photo-slot">
+                            <label class="camera-trigger no-print">
+                                <span>📸</span><b>ABRIR CÁMARA ${n}</b>
+                                <input type="file" accept="image/*" capture="environment" onchange="prevImg(this, '${sec.prefix}_${n}')" class="hidden-input">
+                            </label>
+                            <img id="p_${sec.prefix}_${n}" class="preview-img">
+                        </div>`).join('')}
+                    </div></div>`;
                 container.appendChild(sectionDiv);
             });
         }
 
         window.onload = () => {
+            updateClock();
             createTables();
             const guiasCont = document.getElementById('guiaContenedor');
             ["Estado Físico", "Uso Social", "Seguridad", "Residuos"].forEach((item, idx) => {
@@ -477,7 +478,7 @@
                 d.innerHTML = `<label class="camera-trigger no-print"><span>📸</span><b>ABRIR CÁMARA MARCH ${i}</b><input type="file" accept="image/*" capture="environment" onchange="prevImg(this, 'm_${i}')" class="hidden-input"></label><img id="p_m_${i}" class="preview-img">`;
                 galeria.appendChild(d);
             }
-            const config = JSON.parse(localStorage.getItem('cert_session_v10') || '{}');
+            const config = JSON.parse(localStorage.getItem('cert_session_v11') || '{}');
             if (config.inspector) {
                 document.getElementById('inspectorName').value = config.inspector;
                 document.getElementById('equipoName').value = config.equipo || "";
@@ -485,7 +486,7 @@
                 document.getElementById('assignedID').value = config.num || "";
                 document.getElementById('assignedInitials').value = config.initials || "";
                 if (config.initials && config.num) document.getElementById('inspectorIDDisplay').innerText = `ID: ${config.initials}-${config.num}`;
-                if (parseInt(localStorage.getItem('cert_count_v10') || 1) > 1) {
+                if (parseInt(localStorage.getItem('cert_count_v11') || 1) > 1) {
                     ['inspectorName', 'equipoName'].forEach(id => document.getElementById(id).classList.add('input-locked'));
                     document.getElementById('session-badge')?.classList.remove('hidden');
                 }
