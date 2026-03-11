@@ -17,6 +17,7 @@
         import { getFirestore, collection, addDoc, onSnapshot, getDocs, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
+        // TUS CREDENCIALES DE FIREBASE (Proyecto cert-tecate)
         const firebaseConfig = {
             apiKey: "AIzaSyBvDO1Guh6vnVIiOciqqEQ1jZe0Q5zThwM",
             authDomain: "cert-tecate.firebaseapp.com",
@@ -29,18 +30,23 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
         const auth = getAuth(app);
-        const appId = 'cert-tecate-2026'; 
 
-        // Activación de persistencia para uso en zonas sin señal (Modo Offline)
-        enableIndexedDbPersistence(db).catch((err) => console.warn("Persistencia offline no disponible"));
+        // Nombres de colecciones directas y limpias para tu proyecto
+        const colRegistros = 'cert_registros';
+        const colBrigadistas = 'cert_brigadistas';
 
-        window.certCloud = { db, auth, appId, collection, addDoc, getDocs };
+        // Activación de persistencia para uso en zonas sin señal (Modo Offline en el Río)
+        enableIndexedDbPersistence(db).catch((err) => console.warn("Persistencia offline no disponible", err));
 
-        signInAnonymously(auth).catch(e => console.error("Error de enlace:", e));
+        // Exportar a global para uso en funciones HTML
+        window.certCloud = { db, auth, collection, addDoc, getDocs, colRegistros, colBrigadistas };
+
+        // Autenticación anónima transparente para los brigadistas
+        signInAnonymously(auth).catch(e => console.error("Error de enlace Firebase:", e));
 
         onAuthStateChanged(auth, (user) => {
             if (user) {
-                const recordsRef = collection(db, 'artifacts', appId, 'public', 'data', 'registros_rio');
+                const recordsRef = collection(db, colRegistros);
                 onSnapshot(recordsRef, (snap) => {
                     document.getElementById('sync-counter').innerText = snap.size;
                     window.globalRecords = snap.docs.map(d => d.data());
@@ -124,7 +130,6 @@
 
     <!-- TOP BAR (Herramientas, Estado y Pestañas) -->
     <div class="top-bar bg-slate-900 text-white sticky top-0 z-[1000] w-full shadow-lg">
-        <!-- Fila de Estadísticas y Botones -->
         <div class="flex justify-between items-center px-4 py-2 border-b border-slate-700">
             <div class="flex items-center gap-3 text-[10px] font-bold">
                 <span class="bg-green-600 px-2 py-1 rounded-full flex items-center gap-1 shadow-inner">
@@ -145,7 +150,6 @@
             </div>
         </div>
         
-        <!-- Fila de Pestañas Navegables -->
         <div class="flex overflow-x-auto hide-scrollbar text-xs font-black uppercase tracking-wider bg-slate-800" id="tabs-container">
             <button class="tab-btn active px-5 py-3.5 whitespace-nowrap border-b-4 border-blue-500 text-blue-400 bg-blue-500/10" onclick="switchTab('t-inicio', this)">📍 1. Inicio</button>
             <button id="btn-tab-infra" class="tab-btn px-5 py-3.5 whitespace-nowrap border-b-4 border-transparent text-slate-400 hover:text-white transition" onclick="switchTab('t-infra', this)">🏗️ 2. Infraest.</button>
@@ -357,7 +361,6 @@
             document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
             document.getElementById(tabId).classList.add('active');
             
-            // Si viene del botón
             if(btnElement) {
                 document.querySelectorAll('.tab-btn').forEach(el => {
                     el.classList.remove('border-blue-500', 'text-blue-400', 'bg-blue-500/10', 'text-amber-400', 'text-emerald-400');
@@ -390,7 +393,6 @@
                 'btn-tab-acciones': 't-acciones'
             };
 
-            // Evaluar cuáles botones y contenidos mostrar/ocultar
             Object.keys(contentMap).forEach(id => {
                 const btnEl = document.getElementById(id);
                 const contentEl = document.getElementById(contentMap[id]);
@@ -400,7 +402,6 @@
                     if(contentEl) contentEl.classList.remove('no-print');
                 } else {
                     if(btnEl) btnEl.classList.add('hidden');
-                    // 'no-print' asegura que las pestañas ignoradas no salgan en el PDF generado
                     if(contentEl) contentEl.classList.add('no-print'); 
                 }
             });
@@ -417,13 +418,12 @@
 
         let currentLat = 0;
         let currentLng = 0;
-        window.currentPhotos = {}; // Almacenará DataURL + GPS metadata
+        window.currentPhotos = {}; 
 
         function autoResize(el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; }
         function openManual() { document.getElementById('manualModal').style.display = 'flex'; }
         function closeManual() { document.getElementById('manualModal').style.display = 'none'; }
 
-        // Herramientas Top Bar
         function logout() {
             if(confirm("🚪 ¿Cerrar sesión? Esto borrará tus credenciales temporales en este dispositivo.")) {
                 localStorage.clear(); location.reload();
@@ -444,7 +444,7 @@
             btn.classList.add('opacity-50', 'animate-pulse');
             try {
                 if(window.certCloud) {
-                    await window.certCloud.getDocs(window.certCloud.collection(window.certCloud.db, 'artifacts', window.certCloud.appId, 'public', 'data', 'registros_rio'));
+                    await window.certCloud.getDocs(window.certCloud.collection(window.certCloud.db, window.certCloud.colRegistros));
                     alert("✅ Base de datos sincronizada correctamente con la nube.");
                 }
             } catch(e) {
@@ -483,8 +483,8 @@
             const name = document.getElementById('inspectorName').value.trim();
             if (!name || !window.certCloud) return;
             const initials = name.split(' ').filter(p => p.length > 0).map(n => n[0]).join('').toUpperCase().substring(0, 3);
-            const { db, appId, collection, getDocs, addDoc } = window.certCloud;
-            const brigRef = collection(db, 'artifacts', appId, 'public', 'data', 'brigadistas');
+            const { db, collection, getDocs, addDoc, colBrigadistas } = window.certCloud;
+            const brigRef = collection(db, colBrigadistas);
             const snap = await getDocs(brigRef);
             let assignedNum = null;
             snap.forEach(d => { if (d.data().name.toLowerCase() === name.toLowerCase()) assignedNum = d.data().num; });
@@ -535,7 +535,6 @@
             );
         }
 
-        // Sistema de Compresión y Vinculación Georeferenciada
         function processImage(input, id) {
             const file = input.files[0];
             if (!file) return;
@@ -550,7 +549,7 @@
                 const img = new Image();
                 img.src = e.target.result;
                 img.onload = () => {
-                    // Comprimir drásticamente para cumplir cuotas de base de datos (Max 600px, 50% calidad)
+                    // COMPRESIÓN: Evita saturar Firestore. Las fotos se reducen a 600px y calidad 50%
                     const canvas = document.createElement('canvas');
                     const MAX_WIDTH = 600;
                     let width = img.width;
@@ -570,7 +569,6 @@
                     previewImg.src = dataUrl;
                     previewImg.style.display = 'block';
                     
-                    // Almacenar en objeto global con metadata de ubicación
                     window.currentPhotos[id] = {
                         data: dataUrl,
                         lat: currentLat,
@@ -603,12 +601,12 @@
             document.getElementById('visual-signature').classList.remove('hidden');
             
             const oldTitle = document.title;
-            document.title = folio; // Cambia título para el nombre del archivo PDF
+            document.title = folio; 
             closeFinalizeModal();
 
             if (window.certCloud && window.certCloud.auth.currentUser) {
                 const formData = new FormData(document.getElementById('diagnosticoForm'));
-                // Construir payload asegurando variables geográficas y fotos comprimidas
+                
                 const data = { 
                     timestamp_utc: now.toISOString(), 
                     fecha_captura: dateLocal, 
@@ -616,19 +614,18 @@
                     folio: folio,
                     lat: currentLat,
                     lng: currentLng,
-                    fotos_georeferenciadas: window.currentPhotos // Para uso futuro en Mapas
+                    fotos_georeferenciadas: window.currentPhotos 
                 };
                 formData.forEach((v, k) => { if(!(v instanceof File)) data[k] = v; });
+                
                 try { 
-                    await window.certCloud.addDoc(window.certCloud.collection(window.certCloud.db, 'artifacts', window.certCloud.appId, 'public', 'data', 'registros_rio'), data); 
+                    // Guarda en tu proyecto directo en la colección "cert_registros"
+                    await window.certCloud.addDoc(window.certCloud.collection(window.certCloud.db, window.certCloud.colRegistros), data); 
                 } 
                 catch (e) { console.error("Error nube, guardado local exitoso", e); }
             }
 
-            // Eliminar borrador temporal tras envío exitoso
             localStorage.removeItem('cert_draft_v12');
-
-            // Insertar visual signature al final del form para impresión
             document.getElementById('diagnosticoForm').appendChild(document.getElementById('visual-signature'));
             window.print();
             
@@ -718,7 +715,6 @@
             updateClock();
             createTables();
             
-            // Generar campos de guías en la última pestaña
             const guiasCont = document.getElementById('guiaContenedor');
             ["Infraestructura y Riesgo Físico", "Uso Social e Invasiones", "Seguridad Pública", "Contaminación / Residuos"].forEach((item, idx) => {
                 const d = document.createElement('div');
@@ -726,7 +722,6 @@
                 guiasCont.appendChild(d);
             });
             
-            // Generar galería de marcha en última pestaña
             const galeria = document.getElementById('galeriaMarcha');
             for(let i=1; i<=2; i++) {
                 const d = document.createElement('div'); d.className = "photo-slot";
@@ -734,7 +729,6 @@
                 galeria.appendChild(d);
             }
 
-            // Restaurar sesión persistente
             const config = JSON.parse(localStorage.getItem('cert_session_v12') || '{}');
             if (config.inspector) {
                 document.getElementById('inspectorName').value = config.inspector;
