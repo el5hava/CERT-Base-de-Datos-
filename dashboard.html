@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CERT - Inteligencia Geoespacial</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Leaflet CSS & JS (Mapas) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getFirestore, collection, onSnapshot, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+
+        // TUS CREDENCIALES
+        const firebaseConfig = {
+            apiKey: "AIzaSyBvDO1Guh6vnVIiOciqqEQ1jZe0Q5zThwM",
+            authDomain: "cert-tecate.firebaseapp.com",
+            projectId: "cert-tecate",
+            storageBucket: "cert-tecate.firebasestorage.app",
+            messagingSenderId: "802566499801",
+            appId: "1:802566499801:web:f1821be505a9ae87f0fdc8"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        
+        window.certDB = { db, collection, addDoc };
+        window.allRecords = [];
+
+        signInAnonymously(auth).catch(e => console.error("Error Auth:", e));
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                document.getElementById('conn-status').innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> DATOS EN TIEMPO REAL';
+                const recordsRef = collection(db, 'cert_registros');
+                
+                onSnapshot(recordsRef, (snap) => {
+                    window.allRecords = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                    document.getElementById('total-pts').innerText = window.allRecords.length;
+                    
+                    // Inicializar contenido si es la primera carga
+                    updateSidebarContent();
+                    renderMapMarkers();
+                });
+            }
+        });
+    </script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap');
+        body { font-family: 'Inter', sans-serif; overflow: hidden; background: #0f172a; }
+        #map { height: 100%; width: 100%; z-index: 10; cursor: default; }
+        .crosshair-cursor-map { cursor: crosshair !important; }
+        
+        /* Paneles */
+        .glass-panel { background: #0f172a; border-right: 1px solid #1e293b; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        
+        /* Pestañas */
+        .tab-btn { transition: 0.2s; }
+        
+        /* Marcadores de Gravedad Dinámicos */
+        .sev-marker { display: flex; align-items: center; justify-content: center; border-radius: 50%; font-weight: 900; color: white; transition: 0.3s; box-shadow: 0 4px 10px rgba(0,0,0,0.5); border: 2px solid rgba(255,255,255,0.9); }
+        .sev-marker:hover { transform: scale(1.3); z-index: 1000 !important; }
+        .sev-high { background: rgba(239, 68, 68, 0.95); border-color: #7f1d1d; box-shadow: 0 0 25px rgba(239, 68, 68, 0.9); animation: pulse-red 2s infinite; }
+        .sev-med { background: rgba(245, 158, 11, 0.95); border-color: #78350f; box-shadow: 0 0 15px rgba(245, 158, 11, 0.6); }
+        .sev-low { background: rgba(34, 197, 94, 0.95); border-color: #14532d; }
+        
+        /* Marcador de Agenda / Acción */
+        .m-acciones { background: #eab308; color: black; font-weight: bold; border-color: #000; border: 2px solid #000; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 50%; box-shadow: 0 4px 10px rgba(0,0,0,0.5); cursor: pointer; transition: 0.2s; }
+        .m-acciones:hover { transform: scale(1.2) translateY(-5px); }
+
+        /* Tooltip de Mapas Personalizado */
+        .leaflet-tooltip.custom-tooltip { background: rgba(15, 23, 42, 0.95); border: 1px solid #334155; color: white; border-radius: 12px; padding: 10px 14px; font-family: 'Inter'; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+        .leaflet-tooltip-top.custom-tooltip::before { border-top-color: rgba(15, 23, 42, 0.95); }
+
+        @keyframes pulse-red { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); } 70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
+    </style>
+</head>
+<body class="text-slate-800 flex flex-col h-screen w-full">
+
+    <!-- TOP NAV (PESTAÑAS POR BLOQUE) -->
+    <div class="bg-slate-900 border-b border-slate-700 w-full flex overflow-x-auto hide-scrollbar text-[10px] md:text-xs font-black uppercase tracking-wider z-[200] shrink-0">
+        <button id="tab-all" class="tab-btn px-6 py-4 whitespace-nowrap border-b-4 border-blue-500 text-blue-400 bg-blue-500/10" onclick="switchTab('all', this)">🌎 Vista Global</button>
+        <button id="tab-infra" class="tab-btn px-6 py-4 whitespace-nowrap border-b-4 border-transparent text-slate-400 hover:text-white" onclick="switchTab('infra', this)">🏗️ Infraestructura</button>
+        <button id="tab-amb" class="tab-btn px-6 py-4 whitespace-nowrap border-b-4 border-transparent text-slate-400 hover:text-white" onclick="switchTab('amb', this)">🌿 Medio Ambiente</button>
+        <button id="tab-soc" class="tab-btn px-6 py-4 whitespace-nowrap border-b-4 border-transparent text-slate-400 hover:text-white" onclick="switchTab('soc', this)">👥 Área Social</button>
+        <button id="tab-seg" class="tab-btn px-6 py-4 whitespace-nowrap border-b-4 border-transparent text-slate-400 hover:text-white" onclick="switchTab('seg', this)">🛡️ Seguridad</button>
+        <button id="tab-acciones" class="tab-btn px-6 py-4 whitespace-nowrap border-b-4 border-transparent text-slate-400 hover:text-amber-400" onclick="switchTab('acciones', this)">⭐ Proyectos / Agenda</button>
+    </div>
+
+    <div class="flex flex-1 overflow-hidden relative">
+        <!-- BARRA LATERAL (Dinámica según pestaña) -->
+        <aside class="glass-panel w-full md:w-[380px] h-auto md:h-full flex flex-col z-[100] text-white absolute md:relative bottom-0 md:bottom-auto max-h-[50vh] md:max-h-full overflow-y-auto hide-scrollbar shadow-2xl">
+            <div class="p-6 border-b border-slate-800 bg-slate-900">
+                <h1 class="text-2xl font-black uppercase tracking-tighter text-blue-400">CERT MAPS</h1>
+                <p class="text-[10px] text-slate-400 mt-1 uppercase tracking-widest font-bold" id="sidebar-subtitle">Consolidado General</p>
+                <div class="flex gap-4 mt-4 text-[10px] font-bold bg-slate-800 p-2 rounded-lg justify-between border border-slate-700">
+                    <div id="conn-status" class="flex items-center gap-1.5 text-slate-300">Conectando...</div>
+                    <div class="flex items-center gap-1.5 text-blue-300 bg-blue-900/50 px-2 py-0.5 rounded">📍 <span id="total-pts" class="text-white text-xs">0</span> Puntos Base</div>
+                </div>
+            </div>
+
+            <!-- CONTENIDO DINÁMICO (Leyendas o Filtros) -->
+            <div id="dynamic-sidebar" class="p-5 flex-1 overflow-y-auto">
+                <!-- Se inyecta por JS -->
+            </div>
+
+            <div class="p-5 border-t border-slate-800 bg-slate-900 shrink-0">
+                <button id="btn-add-action" onclick="toggleAddMode()" class="w-full bg-amber-500 hover:bg-amber-400 text-black font-black uppercase text-sm py-4 px-4 rounded-xl shadow-[0_0_15px_rgba(245,158,11,0.4)] transition-all flex items-center justify-center gap-2">
+                    <span>➕ AGENDAR PROYECTO / EVENTO</span>
+                </button>
+                <p id="add-hint" class="text-[10px] font-bold text-amber-400 mt-3 text-center hidden animate-pulse">🎯 Haz clic en un punto del mapa para fijar ubicación.</p>
+            </div>
+        </aside>
+
+        <!-- CONTENEDOR DEL MAPA -->
+        <main class="flex-1 relative bg-slate-800">
+            <div id="map"></div>
+        </main>
+    </div>
+
+    <!-- MODAL DE DETALLES DEL PUNTO (Integrado el Desglose Específico) -->
+    <div id="detailModal" class="fixed inset-0 bg-slate-900/90 backdrop-blur-md z-[500] hidden flex justify-center items-center p-4">
+        <div class="bg-white w-full max-w-5xl max-h-[95vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col relative">
+            <button onclick="closeModal('detailModal')" class="absolute top-5 right-5 w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center font-black text-xl hover:bg-red-500 hover:text-white transition z-10 shadow">✕</button>
+            
+            <div class="bg-slate-900 text-white p-6 border-b-4 border-blue-600">
+                <div class="flex justify-between items-start pr-12">
+                    <div>
+                        <div class="flex gap-2 items-center mb-2">
+                            <span id="md-badge" class="px-3 py-1 bg-blue-600 rounded-full text-[10px] font-black uppercase tracking-widest shadow-inner">Auditoría</span>
+                            <span class="text-blue-300 text-xs font-mono font-bold" id="md-folio">CERT-000</span>
+                        </div>
+                        <h2 id="md-title" class="text-2xl font-black uppercase mt-1">Detalles del Registro</h2>
+                        <p id="md-meta" class="text-xs text-slate-400 mt-1 font-bold">Inspector | Fecha</p>
+                    </div>
+                    <div id="md-gravity-box" class="text-center bg-slate-800 p-3 rounded-xl border border-slate-700 hidden">
+                        <p class="text-[9px] uppercase font-black text-slate-400 tracking-widest mb-1" id="md-grav-title">Prioridad</p>
+                        <div id="md-gravity-score" class="text-3xl font-black text-red-500">0</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="p-6 overflow-y-auto flex-1 bg-slate-50">
+                
+                <!-- SECCIÓN EVENTO / PROYECTO -->
+                <div id="md-gestion-box" class="hidden mb-6 bg-amber-50 border-2 border-amber-300 p-6 rounded-2xl shadow-sm">
+                    <h3 class="font-black text-amber-900 uppercase text-sm border-b-2 border-amber-200 pb-2 mb-4 flex items-center gap-2"><span>⭐</span> Ficha Técnica de Proyecto / Agenda</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="space-y-4">
+                            <div><p class="text-[10px] font-black text-amber-600 uppercase tracking-widest">Tipo</p><p id="md-g-tipo" class="font-bold text-slate-800 text-lg">-</p></div>
+                            <div><p class="text-[10px] font-black text-amber-600 uppercase tracking-widest">Asunto / Título</p><p id="md-g-titulo" class="font-bold text-slate-800">-</p></div>
+                            <div><p class="text-[10px] font-black text-amber-600 uppercase tracking-widest">Justificación</p><p id="md-g-desc" class="text-sm text-slate-700 bg-white p-3 rounded-lg border border-amber-200 mt-1">-</p></div>
+                            
+                            <div class="bg-amber-100 p-3 rounded-xl border border-amber-300 grid grid-cols-2 gap-2">
+                                <div><p class="text-[10px] font-black text-amber-700 uppercase">📅 Fecha Asignada</p><p id="md-g-fecha" class="font-bold text-sm">-</p></div>
+                                <div><p class="text-[10px] font-black text-amber-700 uppercase">⏰ Hora</p><p id="md-g-hora" class="font-bold text-sm">-</p></div>
+                                <div class="col-span-2"><p class="text-[10px] font-black text-amber-700 uppercase mt-2">📱 Tel. / WhatsApp Coordinador</p><p id="md-g-wa" class="font-bold text-sm text-blue-600 underline">-</p></div>
+                            </div>
+                            
+                            <div><p class="text-[10px] font-black text-red-600 uppercase tracking-widest">Autoridades Convocadas</p><p id="md-g-auths" class="text-xs font-bold text-slate-800 bg-red-50 p-3 rounded-lg border border-red-200 mt-1">-</p></div>
+                        </div>
+                        <div class="grid grid-cols-1 gap-2 bg-white p-3 rounded-xl border border-amber-200 h-fit" id="md-g-fotos"></div>
+                    </div>
+                </div>
+
+                <!-- SECCIÓN AUDITORÍA -->
+                <div id="md-audit-box" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-1">
+                        <h3 class="font-black text-slate-800 uppercase text-sm mb-3 border-b-2 border-slate-200 pb-2 flex justify-between items-center">
+                            📊 Evaluación de Indicadores
+                        </h3>
+                        <div id="md-indicadores-list" class="space-y-1 max-h-[400px] overflow-y-auto pr-2 hide-scrollbar"></div>
+                        
+                        <div class="mt-4 bg-blue-50 p-4 rounded-xl border border-blue-200">
+                            <h4 class="text-[10px] font-black uppercase text-blue-800 tracking-widest mb-2">Dependencias Recomendadas:</h4>
+                            <ul id="md-rec-auths" class="text-[10px] font-bold text-blue-900 list-disc pl-4 space-y-1"></ul>
+                        </div>
+                    </div>
+
+                    <div class="lg:col-span-2 space-y-6">
+                        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                            <h3 class="font-black text-slate-800 uppercase text-sm mb-4 border-b-2 border-slate-100 pb-2">📋 Conclusiones del Evaluador</h3>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div><p class="text-[10px] font-black text-red-500 uppercase tracking-widest">Problemáticas Generales</p><p id="md-probs" class="text-xs text-slate-700 mt-1 bg-slate-50 p-3 rounded-lg border border-slate-100">-</p></div>
+                                <div><p class="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Propuestas de Intervención</p><p id="md-props" class="text-xs text-slate-700 mt-1 bg-slate-50 p-3 rounded-lg border border-slate-100">-</p></div>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <h3 class="font-black text-slate-800 uppercase text-sm mb-3">📸 Evidencia Gráfica del Punto</h3>
+                            <div id="md-fotos-grid" class="grid grid-cols-2 md:grid-cols-3 gap-3"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL AGENDAR EVENTO / PROYECTO -->
+    <div id="createModal" class="fixed inset-0 bg-slate-900/90 backdrop-blur-md z-[600] hidden flex justify-center items-center p-4 overflow-y-auto hide-scrollbar">
+        <div class="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col my-8">
+            <div class="bg-amber-500 text-black p-6 flex justify-between items-center border-b-4 border-amber-600">
+                <div>
+                    <h2 class="text-2xl font-black uppercase">Agendar Proyecto o Evento</h2>
+                    <p class="text-xs font-bold opacity-80 mt-1">Georeferenciación: <span id="create-coords" class="font-mono"></span></p>
+                </div>
+                <button onclick="closeModal('createModal')" class="w-10 h-10 bg-black/10 rounded-full flex justify-center items-center font-bold text-black hover:bg-black hover:text-white transition">✕</button>
+            </div>
+            
+            <form id="form-nuevo-evento" class="p-6 md:p-8 space-y-5 bg-slate-50">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div class="md:col-span-2">
+                        <label class="block text-xs font-black uppercase text-slate-600 mb-1">Tipo de Registro</label>
+                        <select id="c-tipo" class="w-full bg-white border-2 border-slate-200 rounded-xl p-3 text-sm font-bold shadow-sm focus:border-amber-500 focus:outline-none">
+                            <option value="Jornada de Limpieza">🧹 Jornada de Limpieza / Acción Ciudadana</option>
+                            <option value="Proyecto de Infraestructura">🏗️ Proyecto de Mejora / Infraestructura</option>
+                            <option value="Mesa de Trabajo en Campo">🤝 Mesa de Trabajo / Recorrido</option>
+                            <option value="Incidencia Extraordinaria">⚠️ Incidencia / Evento Extraordinario</option>
+                        </select>
+                    </div>
+                    
+                    <div class="md:col-span-2">
+                        <label class="block text-xs font-black uppercase text-slate-600 mb-1">Título / Nombre del Evento</label>
+                        <input type="text" id="c-titulo" class="w-full bg-white border-2 border-slate-200 rounded-xl p-3 text-sm font-bold shadow-sm focus:border-amber-500 focus:outline-none" placeholder="Ej. Retiro de maleza masivo...">
+                    </div>
+
+                    <div class="md:col-span-2">
+                        <label class="block text-xs font-black uppercase text-slate-600 mb-1">Actividades Detalladas</label>
+                        <textarea id="c-desc" class="w-full bg-white border-2 border-slate-200 rounded-xl p-3 text-sm min-h-[80px] shadow-sm focus:border-amber-500 focus:outline-none" placeholder="Justificación técnica, maquinaria necesaria..."></textarea>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-black uppercase text-slate-600 mb-1">📅 Fecha Definida</label>
+                        <input type="date" id="c-fecha" class="w-full bg-white border-2 border-slate-200 rounded-xl p-3 text-sm font-bold shadow-sm focus:border-amber-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-black uppercase text-slate-600 mb-1">⏰ Horario</label>
+                        <input type="time" id="c-hora" class="w-full bg-white border-2 border-slate-200 rounded-xl p-3 text-sm font-bold shadow-sm focus:border-amber-500 focus:outline-none">
+                    </div>
+                    <div class="md:col-span-2">
+                        <label class="block text-xs font-black uppercase text-slate-600 mb-1">📱 WhatsApp para Coordinación</label>
+                        <input type="tel" id="c-wa" class="w-full bg-white border-2 border-slate-200 rounded-xl p-3 text-sm font-bold shadow-sm focus:border-amber-500 focus:outline-none" placeholder="10 dígitos">
+                    </div>
+
+                    <div class="md:col-span-2 bg-white p-5 rounded-xl border-2 border-red-100 shadow-sm mt-2">
+                        <label class="block text-xs font-black uppercase text-red-600 mb-3 border-b border-red-100 pb-2">🛡️ Convocar Dependencias</label>
+                        <div class="grid grid-cols-2 md:grid-cols-3 gap-3" id="c-autoridades-checkboxes">
+                            <label class="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer"><input type="checkbox" value="Protección Civil" class="w-4 h-4 accent-red-500"> Protección Civil</label>
+                            <label class="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer"><input type="checkbox" value="Bomberos" class="w-4 h-4 accent-red-500"> Bomberos</label>
+                            <label class="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer"><input type="checkbox" value="Seguridad Pública" class="w-4 h-4 accent-red-500"> Seg. Pública Municipal</label>
+                            <label class="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer"><input type="checkbox" value="Obras Públicas" class="w-4 h-4 accent-red-500"> Obras Públicas</label>
+                            <label class="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer"><input type="checkbox" value="SIDURT" class="w-4 h-4 accent-red-500"> SIDURT</label>
+                            <label class="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer"><input type="checkbox" value="CONAGUA" class="w-4 h-4 accent-red-500"> CONAGUA</label>
+                            <label class="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer"><input type="checkbox" value="SPA" class="w-4 h-4 accent-red-500"> SPA (Medio Ambiente)</label>
+                            <label class="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer"><input type="checkbox" value="DIF / Bienestar" class="w-4 h-4 accent-red-500"> DIF / Bienestar</label>
+                            <label class="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer"><input type="checkbox" value="INPRODEUR" class="w-4 h-4 accent-red-500"> INPRODEUR</label>
+                        </div>
+                    </div>
+
+                    <div class="md:col-span-2 bg-white p-5 border-2 border-dashed border-slate-300 rounded-xl text-center hover:bg-slate-50 transition">
+                        <label class="cursor-pointer block w-full">
+                            <span class="block text-3xl mb-2">📸</span>
+                            <span class="text-sm font-black text-blue-600 uppercase">Fotografía Conceptual (Opcional)</span>
+                            <input type="file" id="c-foto" accept="image/*" class="hidden" onchange="previewAdminPhoto(this)">
+                        </label>
+                        <img id="c-foto-preview" class="w-full max-h-48 object-contain rounded-lg mt-4 hidden mx-auto border border-slate-200">
+                    </div>
+                </div>
+
+                <div class="pt-4 border-t-2 border-slate-200">
+                    <button type="button" onclick="saveAdminEvent()" class="w-full bg-slate-900 text-white font-black uppercase text-lg py-5 rounded-2xl shadow-xl hover:bg-black transition-all transform hover:scale-[1.02]" id="btn-save-admin">✅ PUBLICAR EN MAPA</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // --- ESTRUCTURA DE LA BASE TÉCNICA ---
+        const seccionesCat = [
+            { titulo: "Infraestructura Urbana", prefix: "infra", items: ["Flujo del agua", "Contaminación (Basura)", "Sedimentación", "Obstrucciones", "Muros de contención", "Estado de estructuras", "Descargas pluviales", "Cantidad de puentes", "Seguridad de cruces"] },
+            { titulo: "Medio Ambiente", prefix: "amb", items: ["Vegetación en cauce", "Vegetación ribereña", "Presencia de fauna", "Áreas naturales", "Riesgo inundación", "Erosión suelo", "Acumulación residuos", "Infiltración", "Basureros clandestinos", "Descargas contaminantes"] },
+            { titulo: "Desarrollo Social", prefix: "soc", items: ["Viviendas zona federal", "Construcciones irregulares", "Invasión borde río", "Uso informal suelo", "Personas situación calle", "Espacios abandonados", "Áreas comunitarias"] },
+            { titulo: "Seguridad Ciudadana", prefix: "seg", items: ["Calles cercanas", "Banquetas/Accesos", "Alumbrado público", "Equipamiento urbano", "Vigilancia de zona", "Zona peligrosa / Insegura", "Personas en situación de calle", "Grafitis / Vandalismo", "Muestras de fogatas", "Tránsito de personas"] }
+        ];
+
+        // --- ESTADO LOCAL ---
+        let currentTab = 'all'; 
+        let activeSubFilters = new Set(); 
+        
+        let mapMarkers = [];
+        let isAddMode = false;
+        let tempCoords = null;
+        let adminTempPhotoData = null;
+
+        // Inicializar Mapa
+        const map = L.map('map', { zoomControl: false }).setView([32.5683, -116.6268], 14);
+        L.control.zoom({ position: 'bottomright' }).addTo(map);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 20 }).addTo(map);
+
+        // --- SISTEMA DE PESTAÑAS ---
+        window.switchTab = function(tab, btnElement) {
+            currentTab = tab;
+            activeSubFilters.clear(); // Limpiar filtros de indicadores al cambiar de pestaña
+
+            // Actualizar botones UI
+            document.querySelectorAll('.tab-btn').forEach(el => {
+                el.classList.remove('border-blue-500', 'text-blue-400', 'bg-blue-500/10', 'text-amber-400', 'border-amber-500', 'bg-amber-500/10');
+                el.classList.add('border-transparent', 'text-slate-400');
+            });
+
+            if (btnElement) {
+                btnElement.classList.remove('border-transparent', 'text-slate-400');
+                if (tab === 'acciones') btnElement.classList.add('border-amber-500', 'text-amber-400', 'bg-amber-500/10');
+                else btnElement.classList.add('border-blue-500', 'text-blue-400', 'bg-blue-500/10');
+                
+                // Actualizar Título Sidebar
+                const titles = { 'all':'Consolidado General', 'infra':'Evaluación de Infraestructura', 'amb':'Mapeo de Medio Ambiente', 'soc':'Problemáticas Sociales', 'seg':'Zonas de Seguridad', 'acciones':'Agenda y Gestiones' };
+                document.getElementById('sidebar-subtitle').innerText = titles[tab];
+            }
+
+            updateSidebarContent();
+            renderMapMarkers();
+        }
+
+        // --- RENDERIZADO DEL SIDEBAR DINÁMICO ---
+        function updateSidebarContent() {
+            const container = document.getElementById('dynamic-sidebar');
+            container.innerHTML = '';
+
+            if (currentTab === 'all') {
+                container.innerHTML = `
+                    <div class="bg-slate-800/50 p-5 rounded-2xl border border-slate-700">
+                        <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 border-b border-slate-700 pb-2">Índice Topológico (Prioridad)</h3>
+                        <div class="space-y-4 text-xs font-bold text-slate-200">
+                            <div class="flex items-center gap-3"><span class="w-5 h-5 rounded-full bg-red-500 border-2 border-red-900 shadow-[0_0_10px_rgba(239,68,68,0.8)]"></span> Atención Urgente (Múltiples Graves)</div>
+                            <div class="flex items-center gap-3"><span class="w-5 h-5 rounded-full bg-amber-500 border-2 border-amber-900"></span> Prevención a Corto Plazo</div>
+                            <div class="flex items-center gap-3"><span class="w-5 h-5 rounded-full bg-green-500 border-2 border-green-900"></span> Zona Calificada Estable</div>
+                            <div class="flex items-center gap-3 mt-4 pt-4 border-t border-slate-700"><div class="m-acciones scale-75">⭐</div> Proyectos / Eventos Agendados</div>
+                        </div>
+                    </div>
+                `;
+            } else if (currentTab === 'acciones') {
+                let html = `<h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 border-b border-slate-700 pb-2">Eventos y Agenda</h3><div class="space-y-3">`;
+                const eventos = window.allRecords.filter(r => r.tipo_inspeccion === 'admin_gestion' || r.tipo_inspeccion === 'acciones' || (r.gestion_titulo && r.gestion_titulo.length > 2));
+                
+                eventos.forEach(ev => {
+                    html += `
+                    <div class="bg-slate-800 border border-amber-500/40 p-4 rounded-xl cursor-pointer hover:bg-slate-700 transition" onclick="centerMapOn(${ev.lat}, ${ev.lng})">
+                        <p class="text-xs font-black text-amber-400 uppercase leading-tight">${ev.gestion_titulo}</p>
+                        <div class="flex gap-3 text-[10px] text-slate-300 mt-2 font-bold bg-slate-900/50 p-2 rounded-lg inline-flex">
+                            <span>📅 ${ev.gestion_fecha || 'Pendiente'}</span>
+                            <span class="border-l border-slate-700 pl-3">⏰ ${ev.gestion_hora || '---'}</span>
+                        </div>
+                    </div>`;
+                });
+                if(eventos.length === 0) html += `<p class="text-xs text-slate-500 font-bold text-center mt-5 bg-slate-800 p-4 rounded-xl border border-slate-700">No hay proyectos mapeados.</p>`;
+                html += `</div>`;
+                container.innerHTML = html;
+            } else {
+                // Generar Filtros de Indicadores para Bloque Específico
+                const sec = seccionesCat.find(s => s.prefix === currentTab);
+                let html = `<div class="mb-4 bg-blue-900/20 p-4 rounded-xl border border-blue-500/20"><p class="text-xs text-blue-200">Seleccione los indicadores para aislar en el mapa exactamente en qué puntos falló esa métrica.</p></div>
+                            <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 border-b border-slate-700 pb-2">Filtros de Indicador</h3><div class="space-y-2">`;
+                
+                sec.items.forEach((item, idx) => {
+                    let fallos = 0;
+                    window.allRecords.forEach(r => {
+                        if (r.tipo_inspeccion === currentTab || r.tipo_inspeccion === 'completa') {
+                            let val = r[`${sec.prefix}_v_${idx}`];
+                            if (val === 'M' || val === 'R') fallos++;
+                        }
+                    });
+
+                    // Solo habilitar si hay fallos mapeados
+                    const isChecked = activeSubFilters.has(idx) ? 'checked' : '';
+                    const disabledClass = fallos === 0 ? 'opacity-40 cursor-not-allowed pointer-events-none' : 'cursor-pointer hover:bg-slate-800';
+                    
+                    html += `
+                    <label class="flex items-center justify-between text-xs p-3 rounded-xl transition border border-slate-700/50 bg-slate-800/30 ${disabledClass}">
+                        <div class="flex items-center gap-3">
+                            <input type="checkbox" value="${idx}" onchange="toggleSubFilter(${idx})" class="accent-blue-500 w-4 h-4" ${isChecked}>
+                            <span class="${fallos > 0 ? 'text-slate-200 font-bold' : 'text-slate-500'}">${item}</span>
+                        </div>
+                        ${fallos > 0 ? `<span class="bg-red-500/20 text-red-400 px-2 py-1 rounded-md text-[9px] font-black">${fallos} Reportes</span>` : '<span class="text-[9px] text-green-500 font-black bg-green-900/20 px-2 py-1 rounded-md">Limpio</span>'}
+                    </label>
+                    `;
+                });
+                html += `</div>`;
+                container.innerHTML = html;
+            }
+        }
+
+        window.toggleSubFilter = function(idx) {
+            if (activeSubFilters.has(idx)) activeSubFilters.delete(idx);
+            else activeSubFilters.add(idx);
+            renderMapMarkers();
+        }
+
+        window.centerMapOn = function(lat, lng) {
+            map.setView([lat, lng], 18, { animate: true });
+        }
+
+        // --- ALGORITMO DE GRAVEDAD DINÁMICO ---
+        // Calcula los puntos solo para la pestaña activa
+        function calculateLocalGravity(record, tabScope) {
+            let score = 0;
+            let resultados = { M: [], R: [], B: [], NE: [] };
+            let autoridades = new Set();
+            let isGlobal = tabScope === 'all';
+
+            seccionesCat.forEach(sec => {
+                if (!isGlobal && sec.prefix !== tabScope) return; // Ignorar si estamos en una pestaña específica
+
+                sec.items.forEach((item, idx) => {
+                    let key = `${sec.prefix}_v_${idx}`;
+                    let val = record[key];
+                    
+                    if (val === 'M') { // Malo = 3 Puntos
+                        score += 3;
+                        resultados.M.push({ sec: sec.titulo, item: item });
+                        if(sec.prefix === 'infra') autoridades.add('Obras Públicas / SIDURT');
+                        if(sec.prefix === 'amb') autoridades.add('SPA / CONAGUA');
+                        if(sec.prefix === 'soc') autoridades.add('DIF / Secretaría de Bienestar');
+                        if(sec.prefix === 'seg') autoridades.add('Seguridad Pública Municipal');
+                    } else if (val === 'R') { // Regular = 1 Punto
+                        score += 1;
+                        resultados.R.push({ sec: sec.titulo, item: item });
+                    } else if (val === 'B') { // Bueno = 0 Puntos
+                        resultados.B.push({ sec: sec.titulo, item: item });
+                    } else { // N/E (No evaluado/No aplica) = 0 Puntos
+                        resultados.NE.push({ sec: sec.titulo, item: item });
+                    }
+                });
+            });
+
+            return { score, resultados, autoridades: Array.from(autoridades) };
+        }
+
+        function renderMapMarkers() {
+            mapMarkers.forEach(m => map.removeLayer(m));
+            mapMarkers = [];
+
+            window.allRecords.forEach(record => {
+                if (!record.lat || !record.lng) return;
+
+                // 1. Decidir si el registro aplica para la pestaña actual
+                let isAccion = record.tipo_inspeccion === 'admin_gestion' || record.tipo_inspeccion === 'acciones' || (record.gestion_titulo && record.gestion_titulo.length > 2);
+                let appliesToTab = false;
+                
+                if (currentTab === 'all') appliesToTab = true;
+                else if (currentTab === 'acciones' && isAccion) appliesToTab = true;
+                else if (currentTab !== 'acciones' && !isAccion) {
+                    if (record.tipo_inspeccion === currentTab || record.tipo_inspeccion === 'completa') appliesToTab = true;
+                }
+
+                if (!appliesToTab) return;
+
+                // 2. Si hay subfiltros activos en la pestaña, verificar si el registro tiene un fallo en ese indicador
+                if (currentTab !== 'all' && currentTab !== 'acciones' && activeSubFilters.size > 0) {
+                    let matchesFilter = false;
+                    activeSubFilters.forEach(idx => {
+                        let val = record[`${currentTab}_v_${idx}`];
+                        if (val === 'M' || val === 'R') matchesFilter = true;
+                    });
+                    if (!matchesFilter) return; // Ocultar punto si no tiene el problema seleccionado
+                }
+
+                // 3. Calcular gravedad según contexto de la pestaña
+                const gravInfo = isAccion ? {score:0, fallos:[]} : calculateLocalGravity(record, currentTab);
+                record._gravedad_local = gravInfo; // Guardar temporal para Modal
+                
+                // 4. Crear Marcador
+                let markerHtml = '';
+                let size = 25;
+
+                if (isAccion) {
+                    markerHtml = `<div class="m-acciones text-lg">⭐</div>`;
+                    size = 32;
+                } else {
+                    let levelClass = 'sev-low';
+                    // Escalas dinámicas: Si vemos "Global", el puntaje máximo es ~100. Si vemos un "Bloque", es ~30.
+                    let highThresh = currentTab === 'all' ? 12 : 6;  // Global: 4 graves. Bloque: 2 graves.
+                    let medThresh = currentTab === 'all' ? 4 : 2;
+
+                    if (gravInfo.score >= highThresh) { levelClass = 'sev-high'; size = currentTab === 'all' ? 45 : 40; }
+                    else if (gravInfo.score >= medThresh) { levelClass = 'sev-med'; size = currentTab === 'all' ? 35 : 30; }
+                    
+                    markerHtml = `<div class="sev-marker ${levelClass}" style="width:${size}px; height:${size}px; font-size:${size*0.4}px">${gravInfo.score}</div>`;
+                }
+
+                const marker = L.marker([record.lat, record.lng], {
+                    icon: L.divIcon({ className: 'custom-div-icon', html: markerHtml, iconSize: [size, size], iconAnchor: [size/2, size/2] })
+                }).addTo(map);
+                
+                // Tooltip Analítico
+                let tipTitle = record.lugar_tramo || "Punto Auditado";
+                if(isAccion) tipTitle = `⭐ ${record.gestion_titulo}`;
+                
+                let tooltipContent = `<div class="min-w-[150px]"><strong class="text-xs uppercase border-b border-slate-600 block pb-1 mb-2">${tipTitle}</strong>`;
+                if(isAccion) {
+                    tooltipContent += `<p class="text-[10px] text-amber-400">📅 ${record.gestion_fecha||'Sin agendar'}</p></div>`;
+                } else {
+                    let totalAlertas = gravInfo.resultados.M.length + gravInfo.resultados.R.length;
+                    if(totalAlertas > 0) {
+                        tooltipContent += `<ul class="text-[10px] space-y-1 font-bold">`;
+                        let shown = 0;
+                        gravInfo.resultados.M.forEach(f => { if(shown < 3) { tooltipContent += `<li>🔴 ${f.item}</li>`; shown++; } });
+                        gravInfo.resultados.R.forEach(f => { if(shown < 3) { tooltipContent += `<li>🟡 ${f.item}</li>`; shown++; } });
+                        if(totalAlertas > 3) tooltipContent += `<li class="text-slate-400 italic">+${totalAlertas - 3} más...</li>`;
+                        tooltipContent += `</ul></div>`;
+                    } else {
+                        tooltipContent += `<span class="text-[10px] text-green-400 font-bold">✅ Zona Estable</span></div>`;
+                    }
+                }
+
+                marker.bindTooltip(tooltipContent, { direction: 'top', offset: [0, -10], className: 'custom-tooltip' });
+                marker.on('click', () => openDetailModal(record));
+                mapMarkers.push(marker);
+            });
+        }
+
+        window.openDetailModal = function(data) {
+            document.getElementById('md-folio').innerText = data.folio || 'INGRESO MANUAL';
+            document.getElementById('md-title').innerText = data.lugar_tramo || data.gestion_titulo || 'Ubicación Georeferenciada';
+            document.getElementById('md-meta').innerText = `Autor: ${data.inspector || 'Administrador Central'} | Registrado: ${data.fecha_captura || '-'} ${data.hora_final || ''}`;
+            
+            // Lógica de Visualización de Cajas
+            const gBox = document.getElementById('md-gestion-box');
+            const aBox = document.getElementById('md-audit-box');
+            let isAccion = data.tipo_inspeccion === 'admin_gestion' || data.tipo_inspeccion === 'acciones' || (data.gestion_titulo && data.gestion_titulo.length > 2);
+            
+            if(isAccion) {
+                document.getElementById('md-badge').innerText = 'PROYECTO / EVENTO'; 
+                document.getElementById('md-badge').className = 'px-3 py-1 rounded-full text-[10px] font-black uppercase bg-amber-500 text-black shadow-inner';
+            } else {
+                document.getElementById('md-badge').innerText = `AUDITORÍA: ${data.tipo_inspeccion || 'COMPLETA'}`; 
+                document.getElementById('md-badge').className = 'px-3 py-1 rounded-full text-[10px] font-black uppercase bg-blue-600 shadow-inner';
+            }
+
+            // --- AGENDA DE PROYECTO ---
+            if (isAccion) {
+                gBox.classList.remove('hidden');
+                document.getElementById('md-g-tipo').innerText = data.gestion_tipo || 'Registro de Campo';
+                document.getElementById('md-g-titulo').innerText = data.gestion_titulo || '-';
+                document.getElementById('md-g-desc').innerText = data.gestion_desc || '-';
+                document.getElementById('md-g-fecha').innerText = data.gestion_fecha || 'Sin definir';
+                document.getElementById('md-g-hora').innerText = data.gestion_hora || '--:--';
+                document.getElementById('md-g-wa').innerText = data.gestion_wa || 'No registrado';
+                document.getElementById('md-g-auths').innerText = (data.gestion_auths && data.gestion_auths.length > 0) ? data.gestion_auths.join(" • ") : 'Ninguna seleccionada.';
+            } else { gBox.classList.add('hidden'); }
+
+            // --- RESULTADOS DE AUDITORÍA (Basado en la pestaña actual) ---
+            if (!isAccion) {
+                aBox.classList.remove('hidden');
+                const gInfo = data._gravedad_local || calculateLocalGravity(data, currentTab);
+                
+                // Gravedad UI
+                const gravBox = document.getElementById('md-gravity-box');
+                gravBox.classList.remove('hidden');
+                document.getElementById('md-grav-title').innerText = currentTab === 'all' ? 'Prioridad Global' : 'Prioridad Local';
+                const gScore = document.getElementById('md-gravity-score');
+                gScore.innerText = gInfo.score;
+                let hThresh = currentTab === 'all' ? 12 : 6;
+                let mThresh = currentTab === 'all' ? 4 : 2;
+                if(gInfo.score >= hThresh) gScore.className = 'text-3xl font-black text-red-500';
+                else if(gInfo.score >= mThresh) gScore.className = 'text-3xl font-black text-amber-500';
+                else gScore.className = 'text-3xl font-black text-green-500';
+
+                // Lista de Fallos Específicos
+                const listEl = document.getElementById('md-indicadores-list');
+                listEl.innerHTML = '';
+                let htmlList = '';
+                const r = gInfo.resultados;
+
+                if(r.M.length > 0) {
+                    htmlList += `<div class="mb-3"><h4 class="text-[10px] font-black uppercase text-red-600 mb-1 border-b border-red-200">🔴 Malo / Crítico (3 pts)</h4>`;
+                    r.M.forEach(f => htmlList += `<div class="text-[11px] font-bold text-slate-700 py-1 flex justify-between bg-red-50 px-2 rounded mb-1"><span>${f.item}</span><span class="text-[8px] uppercase opacity-50 truncate ml-2">${f.sec}</span></div>`);
+                    htmlList += `</div>`;
+                }
+                if(r.R.length > 0) {
+                    htmlList += `<div class="mb-3"><h4 class="text-[10px] font-black uppercase text-amber-600 mb-1 border-b border-amber-200">🟡 Regular / Preventivo (1 pt)</h4>`;
+                    r.R.forEach(f => htmlList += `<div class="text-[11px] font-bold text-slate-700 py-1 flex justify-between bg-amber-50 px-2 rounded mb-1"><span>${f.item}</span><span class="text-[8px] uppercase opacity-50 truncate ml-2">${f.sec}</span></div>`);
+                    htmlList += `</div>`;
+                }
+                if(r.B.length > 0) {
+                    htmlList += `<div class="mb-3"><h4 class="text-[10px] font-black uppercase text-green-600 mb-1 border-b border-green-200">🟢 Bueno / Óptimo (0 pts)</h4>`;
+                    r.B.forEach(f => htmlList += `<div class="text-[11px] font-bold text-slate-700 py-1 flex justify-between bg-green-50 px-2 rounded mb-1"><span>${f.item}</span><span class="text-[8px] uppercase opacity-50 truncate ml-2">${f.sec}</span></div>`);
+                    htmlList += `</div>`;
+                }
+                if(r.NE.length > 0) {
+                    htmlList += `<div class="mb-3"><h4 class="text-[10px] font-black uppercase text-slate-400 mb-1 border-b border-slate-200">⚪ N/E / No Aplica (0 pts)</h4>`;
+                    r.NE.forEach(f => htmlList += `<div class="text-[11px] font-bold text-slate-500 py-1 flex justify-between bg-slate-100 px-2 rounded mb-1"><span>${f.item}</span><span class="text-[8px] uppercase opacity-50 truncate ml-2">${f.sec}</span></div>`);
+                    htmlList += `</div>`;
+                }
+                
+                if(htmlList === '') htmlList = '<p class="text-xs font-bold text-slate-500 text-center">Sin indicadores evaluados en este bloque.</p>';
+                listEl.innerHTML = htmlList;
+
+                // Autocompletar Autoridades Recomendadas
+                const authEl = document.getElementById('md-rec-auths');
+                authEl.innerHTML = '';
+                if(gInfo.autoridades.length > 0) gInfo.autoridades.forEach(a => authEl.innerHTML += `<li>${a}</li>`);
+                else authEl.innerHTML = '<li class="text-slate-500 font-normal">No requiere intervención prioritaria.</li>';
+
+                document.getElementById('md-probs').innerText = data.problemas || "Sin comentarios.";
+                document.getElementById('md-props').innerText = data.oportunidades || "Sin comentarios.";
+            } else {
+                aBox.classList.add('hidden');
+                document.getElementById('md-gravity-box').classList.add('hidden');
+            }
+
+            // --- FOTOS COMPARTIDAS ---
+            const galeriaGrid = document.getElementById('md-fotos-grid');
+            const gFotosBox = document.getElementById('md-g-fotos');
+            galeriaGrid.innerHTML = ''; gFotosBox.innerHTML = '';
+            
+            if (data.fotos_georeferenciadas) {
+                Object.keys(data.fotos_georeferenciadas).forEach(key => {
+                    const imgData = data.fotos_georeferenciadas[key].data;
+                    const imgEl = `<img src="${imgData}" class="w-full h-48 object-cover rounded-2xl shadow-sm border-2 border-slate-200 cursor-pointer hover:opacity-80 transition" onclick="window.open('${imgData}')">`;
+                    if(key.includes('gestion')) gFotosBox.innerHTML += imgEl;
+                    else galeriaGrid.innerHTML += imgEl;
+                });
+            } else {
+                const noImgHtml = '<p class="text-xs font-bold text-slate-400 bg-slate-100 p-6 rounded-2xl col-span-full text-center border-2 border-dashed border-slate-300">🚫 Sin fotografías vinculadas.</p>';
+                galeriaGrid.innerHTML = noImgHtml; gFotosBox.innerHTML = noImgHtml;
+            }
+
+            document.getElementById('detailModal').classList.remove('hidden');
+        }
+
+        // --- SISTEMA MANUAL DE EVENTOS ---
+        window.toggleAddMode = function() {
+            isAddMode = !isAddMode;
+            const btn = document.getElementById('btn-add-action');
+            const hint = document.getElementById('add-hint');
+            const mapEl = document.getElementById('map');
+            
+            if (isAddMode) {
+                btn.innerHTML = '❌ CANCELAR MODO AGENDA';
+                btn.classList.replace('bg-amber-500', 'bg-red-500');
+                btn.classList.replace('hover:bg-amber-400', 'hover:bg-red-400');
+                btn.classList.replace('text-black', 'text-white');
+                hint.classList.remove('hidden');
+                mapEl.classList.add('crosshair-cursor-map');
+            } else {
+                btn.innerHTML = '<span>➕ AGENDAR PROYECTO / EVENTO</span>';
+                btn.classList.replace('bg-red-500', 'bg-amber-500');
+                btn.classList.replace('hover:bg-red-400', 'hover:bg-amber-400');
+                btn.classList.replace('text-white', 'text-black');
+                hint.classList.add('hidden');
+                mapEl.classList.remove('crosshair-cursor-map');
+            }
+        }
+
+        map.on('click', function(e) {
+            if (!isAddMode) return;
+            tempCoords = e.latlng;
+            document.getElementById('create-coords').innerText = `${tempCoords.lat.toFixed(6)}, ${tempCoords.lng.toFixed(6)}`;
+            document.getElementById('form-nuevo-evento').reset();
+            document.getElementById('c-foto-preview').classList.add('hidden');
+            adminTempPhotoData = null;
+            document.getElementById('createModal').classList.remove('hidden');
+            toggleAddMode(); 
+        });
+
+        window.closeModal = function(id) { document.getElementById(id).classList.add('hidden'); }
+
+        window.previewAdminPhoto = function(input) {
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.src = e.target.result;
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        const ctx = canvas.getContext('2d');
+                        let w = img.width, h = img.height;
+                        if(w > 700) { h = Math.round((h * 700)/w); w = 700; }
+                        canvas.width = w; canvas.height = h;
+                        ctx.drawImage(img, 0, 0, w, h);
+                        adminTempPhotoData = canvas.toDataURL('image/jpeg', 0.6);
+                        document.getElementById('c-foto-preview').src = adminTempPhotoData;
+                        document.getElementById('c-foto-preview').classList.remove('hidden');
+                    };
+                };
+                reader.readAsDataURL(input.files[0]);
+            }
+        }
+
+        window.saveAdminEvent = async function() {
+            const titulo = document.getElementById('c-titulo').value.trim();
+            if (!titulo) { alert("🚨 El título es obligatorio."); return; }
+            
+            const auths = [];
+            document.querySelectorAll('#c-autoridades-checkboxes input[type="checkbox"]:checked').forEach(cb => auths.push(cb.value));
+
+            const btn = document.getElementById('btn-save-admin');
+            btn.innerText = "⏳ GEOPROCESANDO..."; btn.disabled = true;
+
+            const now = new Date();
+            const record = {
+                tipo_inspeccion: 'admin_gestion',
+                lugar_tramo: titulo, 
+                gestion_tipo: document.getElementById('c-tipo').value,
+                gestion_titulo: titulo,
+                gestion_desc: document.getElementById('c-desc').value,
+                gestion_fecha: document.getElementById('c-fecha').value,
+                gestion_hora: document.getElementById('c-hora').value,
+                gestion_wa: document.getElementById('c-wa').value,
+                gestion_auths: auths,
+                lat: tempCoords.lat,
+                lng: tempCoords.lng,
+                fecha_captura: now.toLocaleDateString('es-MX'),
+                hora_final: now.toLocaleTimeString('es-MX'),
+                inspector: 'Administración CERT',
+                timestamp_utc: now.toISOString()
+            };
+
+            if (adminTempPhotoData) record.fotos_georeferenciadas = { gestion_admin: { data: adminTempPhotoData, lat: tempCoords.lat, lng: tempCoords.lng } };
+
+            try {
+                if(window.certDB) {
+                    await window.certDB.addDoc(window.certDB.collection(window.certDB.db, 'cert_registros'), record);
+                    closeModal('createModal');
+                }
+            } catch (error) { alert("Error al guardar."); }
+            
+            btn.innerText = "✅ PUBLICAR EN MAPA"; btn.disabled = false;
+        }
+
+    </script>
+</body>
+</html>
