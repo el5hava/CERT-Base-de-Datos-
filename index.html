@@ -31,17 +31,15 @@
         const db = getFirestore(app);
         const auth = getAuth(app);
 
-        // Nombres de colecciones directas y limpias para tu proyecto
+        // Nombres de colecciones directas para sincronizar con el Dashboard
         const colRegistros = 'cert_registros';
         const colBrigadistas = 'cert_brigadistas';
 
-        // Activación de persistencia para uso en zonas sin señal (Modo Offline en el Río)
+        // Activación de persistencia (Modo Offline en el Río)
         enableIndexedDbPersistence(db).catch((err) => console.warn("Persistencia offline no disponible", err));
 
-        // Exportar a global para uso en funciones HTML
         window.certCloud = { db, auth, collection, addDoc, getDocs, colRegistros, colBrigadistas };
 
-        // Autenticación anónima transparente para los brigadistas
         signInAnonymously(auth).catch(e => console.error("Error de enlace Firebase:", e));
 
         onAuthStateChanged(auth, (user) => {
@@ -51,13 +49,11 @@
                     document.getElementById('sync-counter').innerText = snap.size;
                     window.globalRecords = snap.docs.map(d => d.data());
                     
-                    // Cálculo de Usuarios en Línea (Inspectores únicos registrados hoy)
                     const today = new Date().toLocaleDateString('es-MX');
                     const onlineUsers = new Set();
                     window.globalRecords.forEach(r => {
                         if (r.fecha_captura === today && r.inspector) onlineUsers.add(r.inspector);
                     });
-                    // Muestra mínimo 1 (el usuario actual)
                     document.getElementById('online-users').innerText = Math.max(1, onlineUsers.size);
                 });
             }
@@ -71,11 +67,9 @@
         body { font-family: 'Inter', sans-serif; background-color: #f1f5f9; color: #000; margin: 0; -webkit-tap-highlight-color: transparent; }
         .container-main { max-width: 950px; margin: 0 auto 40px auto; background: transparent; overflow: hidden; }
         
-        /* Ocultar barra de scroll en pestañas */
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
-        /* Comportamiento de pestañas */
         .tab-content { display: none; animation: fadeIn 0.3s ease; }
         .tab-content.active { display: block; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
@@ -93,13 +87,11 @@
             .preview-img { max-height: 4in !important; width: auto !important; object-fit: contain !important; margin: 5px auto !important; border: none !important; }
         }
 
-        /* DISEÑO DE INTERFAZ */
         .field-label { display: block; font-weight: 800; font-size: 0.65rem; color: #1e293b; text-transform: uppercase; margin-bottom: 0.2rem; letter-spacing: 0.05em; }
         .field-input { width: 100%; background-color: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 12px; padding: 0.7rem; font-size: 0.95rem; font-weight: 600; color: #000; }
         .input-locked { background-color: #f1f5f9 !important; color: #64748b !important; border: 2px dashed #cbd5e0 !important; pointer-events: none; opacity: 0.8; }
         .section-header { background-color: #1e293b; color: #fff; padding: 12px 18px; font-weight: 900; text-transform: uppercase; font-size: 0.8rem; border-radius: 15px 15px 0 0; }
         
-        /* SEMÁFORO PILL */
         .table-container { overflow-x: auto; border: 1.5px solid #e2e8f0; border-radius: 0 0 15px 15px; border-top: none; }
         table { width: 100%; border-collapse: collapse; min-width: 400px; }
         th { background: #f8fafc; padding: 8px; font-size: 9px; text-transform: uppercase; color: #475569; border-bottom: 2px solid #e2e8f0; }
@@ -113,7 +105,6 @@
         .r-gray:checked { background-color: #94a3b8; border-color: #64748b; }
         .radio-pill:checked::before { color: #fff; }
 
-        /* BOTÓN DE CÁMARA */
         .camera-trigger { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; cursor: pointer; padding: 15px; background: #fff; border: 2.5px solid #3b82f6; border-radius: 18px; min-height: 90px; transition: 0.2s; text-align: center; }
         .camera-trigger span { font-size: 2rem; }
         .camera-trigger b { font-size: 0.65rem; text-transform: uppercase; color: #3b82f6; font-weight: 900; }
@@ -128,7 +119,7 @@
 </head>
 <body>
 
-    <!-- TOP BAR (Herramientas, Estado y Pestañas) -->
+    <!-- TOP BAR -->
     <div class="top-bar bg-slate-900 text-white sticky top-0 z-[1000] w-full shadow-lg">
         <div class="flex justify-between items-center px-4 py-2 border-b border-slate-700">
             <div class="flex items-center gap-3 text-[10px] font-bold">
@@ -143,7 +134,7 @@
             <div class="flex gap-1.5">
                 <button type="button" onclick="saveDraft()" class="p-2 bg-slate-800 rounded-lg hover:bg-slate-700 transition" title="Guardar Borrador">💾</button>
                 <button type="button" onclick="syncData()" id="btn-sync" class="p-2 bg-slate-800 rounded-lg hover:bg-slate-700 transition" title="Sincronizar Datos">🔄</button>
-                <button type="button" onclick="exportarCSV()" class="p-2 bg-slate-800 rounded-lg hover:bg-slate-700 transition" title="Exportar CSV">📄<span class="hidden md:inline ml-1 text-[9px] font-black">CSV</span></button>
+                <button type="button" onclick="exportarCSV()" class="p-2 bg-slate-800 rounded-lg hover:bg-slate-700 transition" title="Exportar CSV">📄</button>
                 <button type="button" onclick="exportMasterExcel()" class="p-2 bg-slate-800 rounded-lg hover:bg-slate-700 transition" title="Exportar Excel">📊</button>
                 <button type="button" onclick="openManual()" class="p-2 bg-slate-800 rounded-lg hover:bg-slate-700 transition" title="Manual de Usuario">📖</button>
                 <button type="button" onclick="logout()" class="p-2 bg-red-900/80 text-white border border-red-700 rounded-lg hover:bg-red-800 transition" title="Salir / Cerrar Sesión">🚪</button>
@@ -220,7 +211,7 @@
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                             <div class="text-center flex flex-col justify-center">
                                 <label class="field-label mb-3 font-black text-blue-900">Georeferenciación Satelital</label>
-                                <button type="button" onclick="getPreciseGPS()" id="btnGPS" class="no-print bg-blue-700 text-white w-full py-4 rounded-xl text-xs font-black uppercase shadow-lg hover:bg-blue-800 transition-all">📍 FIJAR POSICIÓN GPS Y VINCULAR MAPA</button>
+                                <button type="button" onclick="getPreciseGPS()" id="btnGPS" class="no-print bg-blue-700 text-white w-full py-4 rounded-xl text-xs font-black uppercase shadow-lg hover:bg-blue-800 transition-all">📍 FIJAR POSICIÓN GPS</button>
                                 <input type="text" id="displayCoords" name="gps_coords" class="text-xs font-mono font-black text-blue-800 bg-transparent border-none w-full text-center mt-3" placeholder="ESPERANDO SATÉLITE...">
                             </div>
                             <div class="flex flex-col items-center justify-center border-l-0 md:border-l-2 border-blue-200 pl-0 md:pl-5">
@@ -305,13 +296,12 @@
                     <div class="pt-8 pb-10 text-center border-t-2 border-slate-100 mt-8">
                         <button type="button" onclick="openFinalizeModal()" class="no-print bg-[#0f172a] text-white w-full py-8 rounded-2xl shadow-xl font-black text-xl active:scale-95 uppercase transition-all flex flex-col items-center justify-center gap-2">
                             <span>📡 GUARDAR EN NUBE Y FINALIZAR</span>
-                            <span class="text-[10px] text-slate-400 font-normal">Sincroniza datos, fotos y GPS a la central</span>
+                            <span class="text-[10px] text-slate-400 font-normal">Sincroniza datos, fotos y GPS al Dashboard</span>
                         </button>
                     </div>
                 </section>
             </div>
 
-            <!-- Elementos Ocultos -->
             <input type="hidden" id="inputFolio" name="folio">
             <input type="hidden" id="assignedID" name="inspector_id">
             <input type="hidden" id="assignedInitials" name="inspector_initials">
@@ -324,31 +314,25 @@
         <div class="modal-content shadow-2xl">
             <div class="text-5xl mb-4">✅</div>
             <h2 class="text-2xl font-black text-slate-900 mb-2 uppercase">Registro Sincronizado</h2>
-            <p class="text-sm text-slate-500 mb-8 px-4">Los datos, fotos georeferenciadas y evaluaciones han sido empaquetadas. El PDF se generará a continuación.</p>
+            <p class="text-sm text-slate-500 mb-8 px-4">Los datos y fotos georeferenciadas han sido empaquetadas al Dashboard.</p>
             <button onclick="handleFinalizeChoice('next')" class="w-full py-4 mb-3 rounded-xl bg-slate-900 text-white font-black uppercase text-sm shadow-lg hover:bg-black">➕ NUEVO TRAMO (Continuar en Campo)</button>
             <button onclick="handleFinalizeChoice('total')" class="w-full py-4 rounded-xl bg-blue-600 text-white font-black uppercase text-sm shadow-lg hover:bg-blue-700">📊 FINALIZAR JORNADA Y EXPORTAR</button>
             <button onclick="closeFinalizeModal()" class="mt-4 text-xs font-bold text-slate-400 uppercase underline">Cancelar y seguir editando</button>
         </div>
     </div>
 
-    <!-- MODAL MANUAL DE USUARIO -->
     <div id="manualModal" class="modal-overlay no-print">
         <div class="modal-content shadow-2xl text-left">
             <h2 class="text-lg font-black mb-4 uppercase border-b-2 border-blue-600 pb-2 text-slate-900 text-center">Manual de Usuario</h2>
             <div class="space-y-3 text-xs text-slate-600">
-                <p><b>1. Navegación por Pestañas:</b> Usa la barra superior azul para cambiar entre secciones (Inicio, Categorías, Acciones). Puedes llenar solo las necesarias.</p>
-                <p><b>2. Botones Superiores:</b><br>
-                💾 <i>Guardar:</i> Guarda un borrador local si quieres salir de la app.<br>
-                🔄 <i>Sincronizar:</i> Fuerza el envío a la base si estabas sin internet.<br>
-                📄 <i>CSV / 📊 Excel:</i> Descarga bases de datos completas del trabajo de todos los brigadistas en el servidor.</p>
-                <p><b>3. Fotos y GPS (Georeferenciación):</b> Obligatorio fijar el GPS en la pestaña 1. Cada foto que tomes después de eso será "marcada" internamente con esas coordenadas para el mapa central.</p>
-                <p><b>4. Nueva pestaña "Acciones":</b> Usar para documentar limpieza, retiros, o proponer un proyecto de intervención técnica en ese punto específico.</p>
+                <p><b>1. Navegación:</b> Usa la barra superior azul para cambiar entre secciones.</p>
+                <p><b>2. GPS Obligatorio:</b> Fija el GPS en la pestaña de inicio para que los puntos aparezcan en el mapa.</p>
+                <p><b>3. Fotos comprimidas:</b> Tómale foto a la evidencia. El sistema la hará ligera automáticamente para no gastar tus datos.</p>
             </div>
             <button onclick="closeManual()" class="w-full mt-6 py-3 bg-slate-900 text-white font-black rounded-lg uppercase shadow-md">Cerrar Manual</button>
         </div>
     </div>
 
-    <!-- FIRMA DIGITAL VISUAL (Solo impresión) -->
     <div id="visual-signature" class="hidden my-8 pt-8 border-t-2 border-black bg-white mx-auto max-w-sm text-center">
         <div id="sign-name-ui" class="text-xl font-black italic uppercase text-slate-900"></div>
         <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest py-1 mt-1">Validación de Brigada CERT</p>
@@ -356,7 +340,6 @@
     </div>
 
     <script>
-        // Lógica de Pestañas
         function switchTab(tabId, btnElement) {
             document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
             document.getElementById(tabId).classList.add('active');
@@ -405,7 +388,6 @@
                     if(contentEl) contentEl.classList.add('no-print'); 
                 }
             });
-
             handleIdentity();
         }
 
@@ -423,12 +405,7 @@
         function autoResize(el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; }
         function openManual() { document.getElementById('manualModal').style.display = 'flex'; }
         function closeManual() { document.getElementById('manualModal').style.display = 'none'; }
-
-        function logout() {
-            if(confirm("🚪 ¿Cerrar sesión? Esto borrará tus credenciales temporales en este dispositivo.")) {
-                localStorage.clear(); location.reload();
-            }
-        }
+        function logout() { if(confirm("¿Cerrar sesión?")) { localStorage.clear(); location.reload(); } }
 
         function saveDraft() {
             const formData = new FormData(document.getElementById('diagnosticoForm'));
@@ -436,7 +413,7 @@
             formData.forEach((v, k) => { if(!(v instanceof File)) draft[k] = v; });
             draft.photos = window.currentPhotos;
             localStorage.setItem('cert_draft_v12', JSON.stringify(draft));
-            alert("💾 Borrador guardado localmente en este dispositivo.");
+            alert("💾 Borrador guardado localmente.");
         }
 
         async function syncData() {
@@ -445,21 +422,17 @@
             try {
                 if(window.certCloud) {
                     await window.certCloud.getDocs(window.certCloud.collection(window.certCloud.db, window.certCloud.colRegistros));
-                    alert("✅ Base de datos sincronizada correctamente con la nube.");
+                    alert("✅ Base de datos sincronizada.");
                 }
-            } catch(e) {
-                alert("⚠️ Modo Offline activo (Sin Red). Tus datos se sincronizarán en cuanto detectemos señal de internet.");
-            }
+            } catch(e) { alert("⚠️ Sin red. Se sincronizará al tener internet."); }
             btn.classList.remove('opacity-50', 'animate-pulse');
         }
 
         function exportarCSV() {
             const data = window.globalRecords || [];
-            if (data.length === 0) { alert("Sin datos en la nube para exportar."); return; }
-            
+            if (data.length === 0) { alert("Sin datos."); return; }
             let headers = ["Folio", "Fecha", "Hora", "Tipo_Inspeccion", "Inspector", "Brigada", "Lugar", "Latitud", "Longitud", "Gestion_Tipo", "Gestion_Titulo", "Gestion_Desc", "Problemas_Global", "Propuestas_Global"];
             secciones.forEach(sec => sec.items.forEach((item, idx) => headers.push(`Eval_${sec.prefix}_${idx}`)));
-
             let csv = headers.join(",") + "\n";
             data.forEach(r => {
                 let row = [
@@ -471,12 +444,8 @@
                 secciones.forEach(sec => sec.items.forEach((item, idx) => row.push(r[`${sec.prefix}_v_${idx}`] || 'N/E')));
                 csv += row.join(",") + "\n";
             });
-            
             const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csv], { type: 'text/csv;charset=utf-8;' });
-            const link = document.createElement("a");
-            link.href = URL.createObjectURL(blob);
-            link.download = `CERT_DatosCSV_${new Date().getTime()}.csv`;
-            link.click();
+            const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = `CERT_DatosCSV_${new Date().getTime()}.csv`; link.click();
         }
 
         async function assignInspectorID() {
@@ -538,7 +507,6 @@
         function processImage(input, id) {
             const file = input.files[0];
             if (!file) return;
-            
             const previewImg = document.getElementById(`p_${id}`);
             const labelText = input.parentElement.querySelector('b');
             if(labelText) labelText.innerText = "PROCESANDO...";
@@ -549,19 +517,12 @@
                 const img = new Image();
                 img.src = e.target.result;
                 img.onload = () => {
-                    // COMPRESIÓN: Evita saturar Firestore. Las fotos se reducen a 600px y calidad 50%
+                    // COMPRESIÓN A 600px PARA NO SATURAR FIREBASE
                     const canvas = document.createElement('canvas');
                     const MAX_WIDTH = 600;
-                    let width = img.width;
-                    let height = img.height;
-                    
-                    if (width > MAX_WIDTH) {
-                        height = Math.round((height * MAX_WIDTH) / width);
-                        width = MAX_WIDTH;
-                    }
-                    canvas.width = width;
-                    canvas.height = height;
-                    
+                    let width = img.width; let height = img.height;
+                    if (width > MAX_WIDTH) { height = Math.round((height * MAX_WIDTH) / width); width = MAX_WIDTH; }
+                    canvas.width = width; canvas.height = height;
                     const ctx = canvas.getContext('2d');
                     ctx.drawImage(img, 0, 0, width, height);
                     const dataUrl = canvas.toDataURL('image/jpeg', 0.5); 
@@ -569,13 +530,7 @@
                     previewImg.src = dataUrl;
                     previewImg.style.display = 'block';
                     
-                    window.currentPhotos[id] = {
-                        data: dataUrl,
-                        lat: currentLat,
-                        lng: currentLng,
-                        timestamp: new Date().toISOString()
-                    };
-                    
+                    window.currentPhotos[id] = { data: dataUrl, lat: currentLat, lng: currentLng, timestamp: new Date().toISOString() };
                     if(labelText) labelText.innerText = "FOTO VINCULADA";
                     input.parentElement.classList.add('border-green-500', 'bg-green-50');
                 }
@@ -583,7 +538,7 @@
         }
 
         function openFinalizeModal() {
-            if (!document.getElementById('assignedID').value) { alert("⚠️ REGISTRE SU NOMBRE EN LA PESTAÑA 1."); return; }
+            if (!document.getElementById('assignedID').value) { alert("⚠️ REGISTRE SU NOMBRE."); return; }
             document.getElementById('finalizeModal').style.display = 'flex';
         }
 
@@ -600,29 +555,18 @@
             document.getElementById('sign-id-ui').innerText = `FOLIO: ${folio} | ${dateLocal} ${timeLocal}`;
             document.getElementById('visual-signature').classList.remove('hidden');
             
-            const oldTitle = document.title;
-            document.title = folio; 
+            const oldTitle = document.title; document.title = folio; 
             closeFinalizeModal();
 
             if (window.certCloud && window.certCloud.auth.currentUser) {
                 const formData = new FormData(document.getElementById('diagnosticoForm'));
-                
                 const data = { 
-                    timestamp_utc: now.toISOString(), 
-                    fecha_captura: dateLocal, 
-                    hora_final: timeLocal, 
-                    folio: folio,
-                    lat: currentLat,
-                    lng: currentLng,
-                    fotos_georeferenciadas: window.currentPhotos 
+                    timestamp_utc: now.toISOString(), fecha_captura: dateLocal, hora_final: timeLocal, 
+                    folio: folio, lat: currentLat, lng: currentLng, fotos_georeferenciadas: window.currentPhotos 
                 };
                 formData.forEach((v, k) => { if(!(v instanceof File)) data[k] = v; });
-                
-                try { 
-                    // Guarda en tu proyecto directo en la colección "cert_registros"
-                    await window.certCloud.addDoc(window.certCloud.collection(window.certCloud.db, window.certCloud.colRegistros), data); 
-                } 
-                catch (e) { console.error("Error nube, guardado local exitoso", e); }
+                try { await window.certCloud.addDoc(window.certCloud.collection(window.certCloud.db, window.certCloud.colRegistros), data); } 
+                catch (e) { console.error("Error nube", e); }
             }
 
             localStorage.removeItem('cert_draft_v12');
@@ -645,12 +589,10 @@
             const wb = XLSX.utils.book_new();
             const genData = data.map(r => ({ 
                 "Folio": r.folio, "Fecha": r.fecha_captura, "Tipo Inspección": (r.tipo_inspeccion || 'completa').toUpperCase(), "Inspector": r.inspector, "Lugar": r.lugar_tramo, 
-                "Latitud": r.lat, "Longitud": r.lng,
-                "Tipo Gestión": r.gestion_tipo, "Título Gestión": r.gestion_titulo, "Detalles Gestión": r.gestion_desc,
+                "Latitud": r.lat, "Longitud": r.lng, "Tipo Gestión": r.gestion_tipo, "Título Gestión": r.gestion_titulo, "Detalles Gestión": r.gestion_desc,
                 "Problemáticas Globales": r.problemas, "Propuestas Globales": r.oportunidades
             }));
             XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(genData), "Resumen y Gestión");
-            
             secciones.forEach(sec => {
                 const secData = data.map(r => {
                     const row = { "Folio": r.folio };
@@ -679,7 +621,6 @@
                 const tabDiv = document.createElement('div');
                 tabDiv.id = `t-${sec.prefix}`;
                 tabDiv.className = "tab-content space-y-4";
-
                 const sectionDiv = document.createElement('section');
                 sectionDiv.className = "rounded-2xl overflow-hidden border-2 border-slate-200 bg-white shadow-sm section-block";
                 
@@ -693,9 +634,7 @@
                     </tr>`).join('');
                 
                 sectionDiv.innerHTML = `
-                    <div class="section-header !bg-slate-800">
-                        <div class="flex items-center gap-3"><span>${sIdx + 2}.</span> ${sec.icon} ${sec.titulo}</div>
-                    </div>
+                    <div class="section-header !bg-slate-800"><div class="flex items-center gap-3"><span>${sIdx + 2}.</span> ${sec.icon} ${sec.titulo}</div></div>
                     <div class="table-container"><table><thead><tr><th class="text-left px-4">Indicador Técnico</th><th>Bueno</th><th>Reg</th><th>Malo</th><th>N/E</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>
                     <div class="p-5 bg-slate-50/50"><div class="grid grid-cols-2 md:grid-cols-4 gap-3">
                         ${[1,2,3,4].map(n => `<div class="photo-slot">
