@@ -451,7 +451,31 @@
             mapMarkers = [];
 
             window.allRecords.forEach(record => {
-                if (!record.lat || !record.lng) return;
+                let rLat = record.lat;
+                let rLng = record.lng;
+
+                // PARCHE DE EMERGENCIA: Extraer coordenadas si se guardaron como 0
+                if ((!rLat || rLat === 0) && record.gps_coords && record.gps_coords.includes('LAT:')) {
+                    try {
+                        const parts = record.gps_coords.split('|');
+                        rLat = parseFloat(parts[0].replace('LAT:', '').trim());
+                        rLng = parseFloat(parts[1].replace('LNG:', '').trim());
+                    } catch(e) {}
+                }
+                
+                // Respaldo secundario por versiones antiguas
+                if ((!rLat || rLat === 0) && record.coordenadas && record.coordenadas.includes(',')) {
+                    try {
+                        const parts = record.coordenadas.split(',');
+                        rLat = parseFloat(parts[0].trim());
+                        rLng = parseFloat(parts[1].trim());
+                    } catch(e) {}
+                }
+
+                if (!rLat || !rLng || rLat === 0 || rLng === 0) return;
+                
+                record.lat = rLat; // Actualizar localmente para el resto del código
+                record.lng = rLng;
 
                 // 1. Decidir si el registro aplica para la pestaña actual
                 let isAccion = record.tipo_inspeccion === 'admin_gestion' || record.tipo_inspeccion === 'acciones' || (record.gestion_titulo && record.gestion_titulo.length > 2);
