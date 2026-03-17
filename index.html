@@ -39,6 +39,9 @@
         enableIndexedDbPersistence(db).catch((err) => console.warn("Persistencia offline no disponible", err));
 
         window.certCloud = { db, auth, collection, addDoc, getDocs, colRegistros, colBrigadistas };
+        window.currentPhotos = {};
+        window.currentLat = 0;
+        window.currentLng = 0;
 
         signInAnonymously(auth).catch(e => console.error("Error de enlace Firebase:", e));
 
@@ -398,10 +401,6 @@
             { titulo: "Seguridad Ciudadana", prefix: "seg", icon: "🛡️", items: ["Calles cercanas", "Banquetas/Accesos", "Alumbrado público", "Equipamiento urbano", "Vigilancia de zona", "Zona peligrosa / Insegura", "Personas en situación de calle", "Grafitis / Vandalismo", "Muestras de fogatas", "Tránsito de personas"] }
         ];
 
-        let currentLat = 0;
-        let currentLng = 0;
-        window.currentPhotos = {}; 
-
         function autoResize(el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; }
         function openManual() { document.getElementById('manualModal').style.display = 'flex'; }
         function closeManual() { document.getElementById('manualModal').style.display = 'none'; }
@@ -489,11 +488,11 @@
             const btn = document.getElementById('btnGPS'); btn.innerText = "⏳ GEOLOCALIZANDO...";
             navigator.geolocation.getCurrentPosition(
                 (p) => {
-                    currentLat = parseFloat(p.coords.latitude.toFixed(6));
-                    currentLng = parseFloat(p.coords.longitude.toFixed(6));
-                    const coords = `${currentLat}, ${currentLng}`;
+                    window.currentLat = parseFloat(p.coords.latitude.toFixed(6));
+                    window.currentLng = parseFloat(p.coords.longitude.toFixed(6));
+                    const coords = `${window.currentLat}, ${window.currentLng}`;
                     document.getElementById('coords').value = coords;
-                    document.getElementById('displayCoords').value = `LAT: ${currentLat} | LNG: ${currentLng}`;
+                    document.getElementById('displayCoords').value = `LAT: ${window.currentLat} | LNG: ${window.currentLng}`;
                     btn.innerText = "📍 PUNTO GEOREFERENCIADO"; 
                     btn.classList.replace('bg-blue-700', 'bg-emerald-600');
                     btn.classList.replace('hover:bg-blue-800', 'hover:bg-emerald-700');
@@ -530,7 +529,7 @@
                     previewImg.src = dataUrl;
                     previewImg.style.display = 'block';
                     
-                    window.currentPhotos[id] = { data: dataUrl, lat: currentLat, lng: currentLng, timestamp: new Date().toISOString() };
+                    window.currentPhotos[id] = { data: dataUrl, lat: window.currentLat, lng: window.currentLng, timestamp: new Date().toISOString() };
                     if(labelText) labelText.innerText = "FOTO VINCULADA";
                     input.parentElement.classList.add('border-green-500', 'bg-green-50');
                 }
@@ -538,7 +537,7 @@
         }
 
         function openFinalizeModal() {
-            if (!document.getElementById('assignedID').value) { alert("⚠️ REGISTRE SU NOMBRE."); return; }
+            if (!document.getElementById('assignedID').value) { alert("⚠️ REGISTRE SU NOMBRE EN LA PESTAÑA 1."); return; }
             document.getElementById('finalizeModal').style.display = 'flex';
         }
 
@@ -558,11 +557,24 @@
             const oldTitle = document.title; document.title = folio; 
             closeFinalizeModal();
 
+            // PARCHE DE EMERGENCIA DE COORDENADAS 
+            let finalLat = window.currentLat;
+            let finalLng = window.currentLng;
+            const coordsTxt = document.getElementById('displayCoords').value;
+            
+            if((!finalLat || finalLat === 0) && coordsTxt && coordsTxt.includes('LAT:')) {
+                try {
+                    const p = coordsTxt.split('|');
+                    finalLat = parseFloat(p[0].replace('LAT:', '').trim());
+                    finalLng = parseFloat(p[1].replace('LNG:', '').trim());
+                } catch(e) {}
+            }
+
             if (window.certCloud && window.certCloud.auth.currentUser) {
                 const formData = new FormData(document.getElementById('diagnosticoForm'));
                 const data = { 
                     timestamp_utc: now.toISOString(), fecha_captura: dateLocal, hora_final: timeLocal, 
-                    folio: folio, lat: currentLat, lng: currentLng, fotos_georeferenciadas: window.currentPhotos 
+                    folio: folio, lat: finalLat, lng: finalLng, fotos_georeferenciadas: window.currentPhotos 
                 };
                 formData.forEach((v, k) => { if(!(v instanceof File)) data[k] = v; });
                 try { await window.certCloud.addDoc(window.certCloud.collection(window.certCloud.db, window.certCloud.colRegistros), data); } 
