@@ -1,768 +1,1174 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CERT - Inteligencia Geoespacial</title>
-    
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- Leaflet CSS & JS (Mapas) -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0a0f1e">
+  <title>CERT Maps 3.0 – Inteligencia Geoespacial</title>
 
-    <!-- Firebase SDKs -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getFirestore, collection, onSnapshot, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
-        // TUS CREDENCIALES
-        const firebaseConfig = {
-            apiKey: "AIzaSyBvDO1Guh6vnVIiOciqqEQ1jZe0Q5zThwM",
-            authDomain: "cert-tecate.firebaseapp.com",
-            projectId: "cert-tecate",
-            storageBucket: "cert-tecate.firebasestorage.app",
-            messagingSenderId: "802566499801",
-            appId: "1:802566499801:web:f1821be505a9ae87f0fdc8"
-        };
+  <!-- ═══════════════════════════════════════════
+       FIREBASE 3.0 – incluye Storage + transacción
+  ═══════════════════════════════════════════ -->
+  <script type="module">
+    import { initializeApp }   from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getFirestore, collection, doc, addDoc, setDoc, getDoc, getDocs,
+             onSnapshot, runTransaction, increment, serverTimestamp }
+      from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    import { getStorage, ref, uploadString, getDownloadURL }
+      from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
+    import { getAuth, signInAnonymously, onAuthStateChanged }
+      from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-        const auth = getAuth(app);
-        
-        window.certDB = { db, collection, addDoc };
-        window.allRecords = [];
+    const firebaseConfig = {
+      apiKey:            "AIzaSyBvDO1Guh6vnVIiOciqqEQ1jZe0Q5zThwM",
+      authDomain:        "cert-tecate.firebaseapp.com",
+      projectId:         "cert-tecate",
+      storageBucket:     "cert-tecate.firebasestorage.app",
+      messagingSenderId: "802566499801",
+      appId:             "1:802566499801:web:f1821be505a9ae87f0fdc8"
+    };
 
-        signInAnonymously(auth).catch(e => console.error("Error Auth:", e));
+    const app     = initializeApp(firebaseConfig);
+    const db      = getFirestore(app);
+    const storage = getStorage(app);
+    const auth    = getAuth(app);
 
-        onAuthStateChanged(auth, (user) => {
-            if (user) {
-                document.getElementById('conn-status').innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> DATOS EN TIEMPO REAL';
-                const recordsRef = collection(db, 'cert_registros');
-                
-                onSnapshot(recordsRef, (snap) => {
-                    window.allRecords = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-                    document.getElementById('total-pts').innerText = window.allRecords.length;
-                    
-                    // Inicializar contenido si es la primera carga
-                    updateSidebarContent();
-                    renderMapMarkers();
-                });
-            }
-        });
-    </script>
+    /* ── Folio único global (mismo algoritmo que index 3.0) ── */
+    async function reserveFolio(prefix) {
+      const counterRef = doc(db, 'cert_counters', 'global');
+      const dateStr = new Date().toISOString().slice(0,10).replace(/-/g,'');
+      let num;
+      await runTransaction(db, async tx => {
+        const snap = await tx.get(counterRef);
+        num = (snap.exists() ? snap.data().total : 0) + 1;
+        tx.set(counterRef, { total: increment(1) }, { merge: true });
+      });
+      return `CERT-${dateStr}-${prefix}-${String(num).padStart(4,'0')}`;
+    }
 
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap');
-        body { font-family: 'Inter', sans-serif; overflow: hidden; background: #0f172a; }
-        #map { height: 100%; width: 100%; z-index: 10; cursor: default; }
-        .crosshair-cursor-map { cursor: crosshair !important; }
-        
-        /* Paneles */
-        .glass-panel { background: #0f172a; border-right: 1px solid #1e293b; }
-        .hide-scrollbar::-webkit-scrollbar { display: none; }
-        
-        /* Pestañas */
-        .tab-btn { transition: 0.2s; }
-        
-        /* Marcadores de Gravedad Dinámicos */
-        .sev-marker { display: flex; align-items: center; justify-content: center; border-radius: 50%; font-weight: 900; color: white; transition: 0.3s; box-shadow: 0 4px 10px rgba(0,0,0,0.5); border: 2px solid rgba(255,255,255,0.9); }
-        .sev-marker:hover { transform: scale(1.3); z-index: 1000 !important; }
-        .sev-high { background: rgba(239, 68, 68, 0.95); border-color: #7f1d1d; box-shadow: 0 0 25px rgba(239, 68, 68, 0.9); animation: pulse-red 2s infinite; }
-        .sev-med { background: rgba(245, 158, 11, 0.95); border-color: #78350f; box-shadow: 0 0 15px rgba(245, 158, 11, 0.6); }
-        .sev-low { background: rgba(34, 197, 94, 0.95); border-color: #14532d; }
-        
-        /* Marcador de Agenda / Acción */
-        .m-acciones { background: #eab308; color: black; font-weight: bold; border-color: #000; border: 2px solid #000; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 50%; box-shadow: 0 4px 10px rgba(0,0,0,0.5); cursor: pointer; transition: 0.2s; }
-        .m-acciones:hover { transform: scale(1.2) translateY(-5px); }
+    /* ── Subir foto a Storage ── */
+    async function uploadPhoto(base64, path) {
+      const storageRef = ref(storage, path);
+      await uploadString(storageRef, base64, 'data_url');
+      return await getDownloadURL(storageRef);
+    }
 
-        /* Tooltip de Mapas Personalizado */
-        .leaflet-tooltip.custom-tooltip { background: rgba(15, 23, 42, 0.95); border: 1px solid #334155; color: white; border-radius: 12px; padding: 10px 14px; font-family: 'Inter'; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
-        .leaflet-tooltip-top.custom-tooltip::before { border-top-color: rgba(15, 23, 42, 0.95); }
+    window.certCloud = { db, storage, auth, collection, addDoc, getDocs, doc,
+                         reserveFolio, uploadPhoto };
+    window.allRecords = [];
 
-        @keyframes pulse-red { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); } 70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
-    </style>
+    signInAnonymously(auth).catch(() => {});
+
+    onAuthStateChanged(auth, user => {
+      if (!user) return;
+      const badge = document.getElementById('conn-badge');
+      if (badge) { badge.textContent = 'EN LÍNEA'; badge.className = 'conn-badge online'; }
+
+      onSnapshot(collection(db, 'cert_registros'), snap => {
+        window.allRecords = snap.docs.map(d => ({ _docId: d.id, ...d.data() }));
+        refreshCounters();
+        updateSidebarContent();
+        renderMapMarkers();
+      });
+    });
+
+    window.addEventListener('online',  () => setBadge(true));
+    window.addEventListener('offline', () => setBadge(false));
+    function setBadge(on) {
+      const b = document.getElementById('conn-badge');
+      if (!b) return;
+      b.textContent = on ? 'EN LÍNEA' : 'SIN RED';
+      b.className = 'conn-badge ' + (on ? 'online' : 'offline');
+    }
+  </script>
+
+  <style>
+    :root {
+      --ink:   #0a0f1e;
+      --ink2:  #1e2740;
+      --panel: #0f172a;
+      --line:  #1e293b;
+      --muted: #64748b;
+      --mono:  'Space Mono', monospace;
+      --sans:  'DM Sans', sans-serif;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin:0; padding:0; }
+    html, body { height: 100%; overflow: hidden; }
+    body { font-family: var(--sans); background: var(--ink); color: #e2e8f0; }
+
+    /* ── Scrollbar ── */
+    .noscroll::-webkit-scrollbar { display:none; }
+    .noscroll { -ms-overflow-style:none; scrollbar-width:none; }
+
+    /* ── Top nav ── */
+    .topnav {
+      background: var(--panel);
+      border-bottom: 1px solid var(--line);
+      display: flex; overflow-x: auto;
+      flex-shrink: 0; z-index: 200;
+    }
+    .topnav::-webkit-scrollbar { display:none; }
+    .tnav-btn {
+      flex-shrink: 0; padding: 12px 18px;
+      background: transparent; border: none;
+      border-bottom: 3px solid transparent;
+      font-family: var(--mono); font-size: 9px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .07em;
+      color: #64748b; cursor: pointer; white-space: nowrap;
+      transition: color .2s, border-color .2s;
+    }
+    .tnav-btn.active-blue  { color: #60a5fa; border-bottom-color: #3b82f6; background: rgba(59,130,246,.08); }
+    .tnav-btn.active-amber { color: #fbbf24; border-bottom-color: #f59e0b; background: rgba(245,158,11,.08); }
+
+    /* ── Layout ── */
+    .layout { display: flex; flex: 1; overflow: hidden; position: relative; }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      width: 360px; flex-shrink: 0;
+      background: var(--panel);
+      border-right: 1px solid var(--line);
+      display: flex; flex-direction: column;
+      height: 100%; overflow: hidden;
+      z-index: 100;
+    }
+    @media (max-width: 768px) {
+      .sidebar {
+        position: absolute; bottom: 0; left: 0; right: 0;
+        width: 100%; height: 52vh; border-right: none;
+        border-top: 1px solid var(--line);
+      }
+    }
+    .sidebar-head {
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--line);
+      flex-shrink: 0;
+    }
+    .sidebar-body {
+      flex: 1; overflow-y: auto; padding: 14px 16px;
+    }
+    .sidebar-body::-webkit-scrollbar { width: 3px; }
+    .sidebar-body::-webkit-scrollbar-track { background: transparent; }
+    .sidebar-body::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+    .sidebar-foot {
+      padding: 14px 16px;
+      border-top: 1px solid var(--line);
+      flex-shrink: 0;
+    }
+
+    /* ── Conn badge ── */
+    .conn-badge {
+      font-family: var(--mono); font-size: 9px; font-weight: 700;
+      padding: 3px 9px; border-radius: 99px; letter-spacing: .07em;
+    }
+    .conn-badge.online  { background: #14532d; color: #86efac; }
+    .conn-badge.offline { background: #7f1d1d; color: #fca5a5; }
+    .conn-badge.pending { background: #1e293b; color: #64748b; }
+
+    /* ── Stat pills ── */
+    .stat-row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+    .stat-pill {
+      background: #1e293b; border: 1px solid #334155;
+      border-radius: 8px; padding: 6px 12px;
+      font-family: var(--mono); font-size: 9px; font-weight: 700;
+      color: #94a3b8; display: flex; align-items: center; gap: 5px;
+    }
+    .stat-pill span { color: #e2e8f0; }
+
+    /* ── Filter selects ── */
+    .filter-row { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+    .f-select {
+      background: #1e293b; border: 1px solid #334155;
+      border-radius: 8px; padding: 5px 10px;
+      font-family: var(--mono); font-size: 9px; font-weight: 700;
+      color: #94a3b8; cursor: pointer; flex: 1; min-width: 100px;
+    }
+    .f-select:focus { outline: none; border-color: #3b82f6; }
+
+    /* ── Sidebar legend item ── */
+    .leg-item { display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 500; color: #cbd5e1; padding: 6px 0; }
+
+    /* ── Sub-filter checkbox row ── */
+    .sf-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 9px 12px; border-radius: 10px;
+      border: 1px solid #1e293b; background: rgba(255,255,255,.03);
+      margin-bottom: 6px; cursor: pointer; transition: background .15s;
+    }
+    .sf-row:hover { background: rgba(255,255,255,.07); }
+    .sf-row.disabled { opacity: .35; pointer-events: none; }
+    .sf-count-bad  { background: rgba(239,68,68,.15);  color: #f87171; font-size: 9px; font-weight: 700; padding: 2px 7px; border-radius: 6px; font-family: var(--mono); }
+    .sf-count-ok   { background: rgba(34,197,94,.12);  color: #4ade80; font-size: 9px; font-weight: 700; padding: 2px 7px; border-radius: 6px; font-family: var(--mono); }
+
+    /* ── Evento card ── */
+    .ev-card {
+      background: #1e293b; border: 1px solid rgba(245,158,11,.3);
+      border-radius: 12px; padding: 12px 14px; margin-bottom: 8px;
+      cursor: pointer; transition: background .15s;
+    }
+    .ev-card:hover { background: #263045; }
+    .ev-title { font-size: 12px; font-weight: 700; color: #fbbf24; margin-bottom: 5px; }
+    .ev-meta  { font-family: var(--mono); font-size: 9px; color: #64748b; }
+
+    /* ── Add action btn ── */
+    .add-btn {
+      width: 100%; padding: 13px; border: none; border-radius: 12px;
+      font-family: var(--mono); font-size: 10px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .06em;
+      cursor: pointer; transition: background .15s, transform .1s;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .add-btn.idle   { background: #d97706; color: #000; }
+    .add-btn.active-mode { background: #dc2626; color: #fff; }
+    .add-btn:active { transform: scale(.98); }
+    .add-hint {
+      font-family: var(--mono); font-size: 9px; font-weight: 700;
+      color: #fbbf24; text-align: center; margin-top: 8px;
+      animation: blink 1.2s ease infinite; display: none;
+    }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    /* ── Map ── */
+    #map { height: 100%; width: 100%; z-index: 10; }
+    .crosshair { cursor: crosshair !important; }
+
+    /* ── Markers ── */
+    .sev-marker {
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 50%; font-weight: 900; color: #fff;
+      border: 2px solid rgba(255,255,255,.85);
+      box-shadow: 0 3px 10px rgba(0,0,0,.5);
+      transition: transform .2s;
+    }
+    .sev-marker:hover { transform: scale(1.25); }
+    .sev-high { background: rgba(239,68,68,.95); border-color: #7f1d1d; animation: pulsered 2s infinite; box-shadow: 0 0 20px rgba(239,68,68,.8); }
+    .sev-med  { background: rgba(245,158,11,.95); border-color: #78350f; box-shadow: 0 0 12px rgba(245,158,11,.5); }
+    .sev-low  { background: rgba(34,197,94,.95);  border-color: #14532d; }
+    .m-admin  { background: #eab308; color: #000; border: 2px solid #000; border-radius: 50%; display:flex; align-items:center; justify-content:center; font-size:14px; box-shadow:0 3px 10px rgba(0,0,0,.5); cursor:pointer; transition:.2s; }
+    .m-admin:hover { transform: scale(1.2) translateY(-4px); }
+    @keyframes pulsered { 0%{box-shadow:0 0 0 0 rgba(239,68,68,.7)} 70%{box-shadow:0 0 0 14px rgba(239,68,68,0)} 100%{box-shadow:0 0 0 0 rgba(239,68,68,0)} }
+
+    /* ── Leaflet tooltip ── */
+    .leaflet-tooltip.ctip {
+      background: rgba(10,15,30,.96); border: 1px solid #334155;
+      color: #e2e8f0; border-radius: 10px; padding: 9px 13px;
+      font-family: var(--sans); box-shadow: 0 8px 20px rgba(0,0,0,.5);
+    }
+    .leaflet-tooltip-top.ctip::before { border-top-color: rgba(10,15,30,.96); }
+
+    /* ── Toast ── */
+    #toast {
+      position: fixed; bottom: 24px; left: 50%;
+      transform: translateX(-50%) translateY(70px);
+      background: #1e293b; color: #e2e8f0;
+      font-family: var(--mono); font-size: 11px; font-weight: 700;
+      padding: 10px 20px; border-radius: 99px; z-index: 9999;
+      pointer-events: none; opacity: 0; white-space: nowrap;
+      transition: transform .3s cubic-bezier(.34,1.56,.64,1), opacity .3s;
+      box-shadow: 0 6px 24px rgba(0,0,0,.4);
+    }
+    #toast.show  { transform: translateX(-50%) translateY(0); opacity: 1; }
+    #toast.ok    { background: #14532d; color: #86efac; }
+    #toast.err   { background: #7f1d1d; color: #fca5a5; }
+    #toast.warn  { background: #78350f; color: #fde68a; }
+
+    /* ── Modals ── */
+    .overlay {
+      position: fixed; inset: 0;
+      background: rgba(10,15,30,.92);
+      display: none; align-items: center; justify-content: center;
+      z-index: 500; padding: 16px; overflow-y: auto;
+    }
+    .overlay.open { display: flex; }
+    .modal-box {
+      background: #fff; color: #0f172a;
+      border-radius: 24px; width: 100%; max-width: 900px;
+      max-height: 95dvh; overflow: hidden;
+      display: flex; flex-direction: column;
+      box-shadow: 0 24px 64px rgba(0,0,0,.6);
+    }
+    .modal-head {
+      background: #0f172a; color: #e2e8f0;
+      padding: 20px 24px;
+      border-bottom: 3px solid #2563eb;
+      flex-shrink: 0; position: relative;
+    }
+    .modal-close {
+      position: absolute; top: 16px; right: 16px;
+      width: 36px; height: 36px; border-radius: 50%;
+      background: rgba(255,255,255,.1); border: none;
+      color: #e2e8f0; font-size: 16px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background .15s;
+    }
+    .modal-close:hover { background: #dc2626; }
+    .modal-body { padding: 20px 24px; overflow-y: auto; flex: 1; background: #f8fafc; }
+
+    /* Detail modal sub-sections */
+    .detail-sec { background: #fff; border-radius: 14px; border: 1px solid #e2e8f0; padding: 16px; margin-bottom: 14px; }
+    .detail-sec-title { font-family: var(--mono); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: #64748b; border-bottom: 1px solid #f1f5f9; padding-bottom: 8px; margin-bottom: 12px; }
+    .ind-row { font-size: 12px; padding: 5px 8px; border-radius: 7px; margin-bottom: 3px; display: flex; justify-content: space-between; font-weight: 500; }
+    .ind-M { background: #fff5f5; color: #991b1b; }
+    .ind-R { background: #fffbeb; color: #92400e; }
+    .ind-B { background: #f0fdf4; color: #166534; }
+
+    /* foto grid */
+    .foto-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+    .foto-grid img { width:100%; height:130px; object-fit:cover; border-radius:10px; cursor:pointer; border:2px solid #e2e8f0; transition:opacity .15s; }
+    .foto-grid img:hover { opacity:.82; }
+    .foto-meta { font-family:var(--mono); font-size:9px; color:#64748b; margin-top:3px; text-align:center; }
+
+    /* Create event modal */
+    .create-box { background:#fff; border-radius:24px; width:100%; max-width:640px; max-height:95dvh; overflow:hidden; display:flex; flex-direction:column; box-shadow:0 24px 64px rgba(0,0,0,.6); }
+    .create-head { background:#d97706; color:#000; padding:18px 22px; flex-shrink:0; display:flex; justify-content:space-between; align-items:center; }
+    .create-body { padding:20px 22px; overflow-y:auto; flex:1; background:#fafafa; }
+    .cf-label { display:block; font-family:var(--mono); font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.07em; color:#64748b; margin-bottom:4px; }
+    .cf-input { width:100%; background:#fff; border:1.5px solid #e2e8f0; border-radius:10px; padding:9px 12px; font-size:13px; font-weight:500; color:#0f172a; }
+    .cf-input:focus { outline:none; border-color:#d97706; }
+    .cf-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    @media(max-width:500px){ .cf-grid{grid-template-columns:1fr;} }
+
+    /* Layer toggle */
+    .layer-toggle {
+      position: absolute; top: 12px; right: 12px; z-index: 400;
+      background: var(--panel); border: 1px solid var(--line);
+      border-radius: 10px; padding: 6px 12px;
+      font-family: var(--mono); font-size: 9px; font-weight: 700;
+      color: #94a3b8; cursor: pointer; text-transform: uppercase;
+      letter-spacing: .06em; transition: background .15s;
+    }
+    .layer-toggle:hover { background: #1e293b; color: #e2e8f0; }
+  </style>
 </head>
-<body class="text-slate-800 flex flex-col h-screen w-full">
+<body style="display:flex; flex-direction:column; height:100dvh;">
 
-    <!-- TOP NAV (PESTAÑAS POR BLOQUE) -->
-    <div class="bg-slate-900 border-b border-slate-700 w-full flex overflow-x-auto hide-scrollbar text-[10px] md:text-xs font-black uppercase tracking-wider z-[200] shrink-0">
-        <button id="tab-all" class="tab-btn px-6 py-4 whitespace-nowrap border-b-4 border-blue-500 text-blue-400 bg-blue-500/10" onclick="switchTab('all', this)">🌎 Vista Global</button>
-        <button id="tab-infra" class="tab-btn px-6 py-4 whitespace-nowrap border-b-4 border-transparent text-slate-400 hover:text-white" onclick="switchTab('infra', this)">🏗️ Infraestructura</button>
-        <button id="tab-amb" class="tab-btn px-6 py-4 whitespace-nowrap border-b-4 border-transparent text-slate-400 hover:text-white" onclick="switchTab('amb', this)">🌿 Medio Ambiente</button>
-        <button id="tab-soc" class="tab-btn px-6 py-4 whitespace-nowrap border-b-4 border-transparent text-slate-400 hover:text-white" onclick="switchTab('soc', this)">👥 Área Social</button>
-        <button id="tab-seg" class="tab-btn px-6 py-4 whitespace-nowrap border-b-4 border-transparent text-slate-400 hover:text-white" onclick="switchTab('seg', this)">🛡️ Seguridad</button>
-        <button id="tab-acciones" class="tab-btn px-6 py-4 whitespace-nowrap border-b-4 border-transparent text-slate-400 hover:text-amber-400" onclick="switchTab('acciones', this)">⭐ Proyectos / Agenda</button>
+<!-- ════ TOP NAV ═══ -->
+<nav class="topnav noscroll">
+  <button id="tnav-all"      class="tnav-btn active-blue"  onclick="switchTab('all',this)">🌎 Vista Global</button>
+  <button id="tnav-infra"    class="tnav-btn"              onclick="switchTab('infra',this)">🏗️ Infraest.</button>
+  <button id="tnav-amb"      class="tnav-btn"              onclick="switchTab('amb',this)">🌿 Ambiente</button>
+  <button id="tnav-soc"      class="tnav-btn"              onclick="switchTab('soc',this)">👥 Social</button>
+  <button id="tnav-seg"      class="tnav-btn"              onclick="switchTab('seg',this)">🛡️ Seguridad</button>
+  <button id="tnav-acciones" class="tnav-btn"              onclick="switchTab('acciones',this)">⭐ Proyectos</button>
+</nav>
+
+<!-- ════ LAYOUT ═══ -->
+<div class="layout" style="flex:1; overflow:hidden;">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar noscroll">
+    <div class="sidebar-head">
+      <div style="font-family:var(--mono); font-size:9px; font-weight:700; color:#475569; text-transform:uppercase; letter-spacing:.1em;">CERT Tecate</div>
+      <div style="font-family:var(--mono); font-size:16px; font-weight:700; color:#60a5fa; margin-top:2px;">MAPS 3.0</div>
+      <div style="font-size:11px; color:#64748b; font-weight:500; margin-top:1px;" id="sidebar-subtitle">Consolidado General</div>
+
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-top:10px;">
+        <span class="conn-badge pending" id="conn-badge">CONECTANDO</span>
+        <button onclick="exportExcel()" style="background:#1e293b; border:1px solid #334155; border-radius:8px; padding:5px 10px; font-family:var(--mono); font-size:9px; font-weight:700; color:#94a3b8; cursor:pointer; text-transform:uppercase; letter-spacing:.05em;">📊 Excel</button>
+      </div>
+
+      <div class="stat-row">
+        <div class="stat-pill">📍 Total <span id="cnt-total">0</span></div>
+        <div class="stat-pill">📅 Hoy <span id="cnt-today">0</span></div>
+        <div class="stat-pill">🔴 Críticos <span id="cnt-critical">0</span></div>
+      </div>
+
+      <!-- Filtros inspector / fecha -->
+      <div class="filter-row" style="margin-top:10px; margin-bottom:0;">
+        <select class="f-select" id="filter-inspector" onchange="applyFilters()">
+          <option value="">Todos los inspectores</option>
+        </select>
+        <select class="f-select" id="filter-fecha" onchange="applyFilters()">
+          <option value="">Todas las fechas</option>
+        </select>
+      </div>
     </div>
 
-    <div class="flex flex-1 overflow-hidden relative">
-        <!-- BARRA LATERAL (Dinámica según pestaña) -->
-        <aside class="glass-panel w-full md:w-[380px] h-auto md:h-full flex flex-col z-[100] text-white absolute md:relative bottom-0 md:bottom-auto max-h-[50vh] md:max-h-full overflow-y-auto hide-scrollbar shadow-2xl">
-            <div class="p-6 border-b border-slate-800 bg-slate-900">
-                <h1 class="text-2xl font-black uppercase tracking-tighter text-blue-400">CERT MAPS</h1>
-                <p class="text-[10px] text-slate-400 mt-1 uppercase tracking-widest font-bold" id="sidebar-subtitle">Consolidado General</p>
-                <div class="flex gap-4 mt-4 text-[10px] font-bold bg-slate-800 p-2 rounded-lg justify-between border border-slate-700">
-                    <div id="conn-status" class="flex items-center gap-1.5 text-slate-300">Conectando...</div>
-                    <div class="flex items-center gap-1.5 text-blue-300 bg-blue-900/50 px-2 py-0.5 rounded">📍 <span id="total-pts" class="text-white text-xs">0</span> Puntos Base</div>
-                </div>
-            </div>
+    <div class="sidebar-body noscroll" id="dynamic-sidebar"></div>
 
-            <!-- CONTENIDO DINÁMICO (Leyendas o Filtros) -->
-            <div id="dynamic-sidebar" class="p-5 flex-1 overflow-y-auto">
-                <!-- Se inyecta por JS -->
-            </div>
-
-            <div class="p-5 border-t border-slate-800 bg-slate-900 shrink-0">
-                <button id="btn-add-action" onclick="toggleAddMode()" class="w-full bg-amber-500 hover:bg-amber-400 text-black font-black uppercase text-sm py-4 px-4 rounded-xl shadow-[0_0_15px_rgba(245,158,11,0.4)] transition-all flex items-center justify-center gap-2">
-                    <span>➕ AGENDAR PROYECTO / EVENTO</span>
-                </button>
-                <p id="add-hint" class="text-[10px] font-bold text-amber-400 mt-3 text-center hidden animate-pulse">🎯 Haz clic en un punto del mapa para fijar ubicación.</p>
-            </div>
-        </aside>
-
-        <!-- CONTENEDOR DEL MAPA -->
-        <main class="flex-1 relative bg-slate-800">
-            <div id="map"></div>
-        </main>
+    <div class="sidebar-foot">
+      <button class="add-btn idle" id="btn-add-action" onclick="toggleAddMode()">
+        ➕ Agendar Proyecto / Evento
+      </button>
+      <div class="add-hint" id="add-hint">🎯 Toca un punto del mapa para fijar ubicación</div>
     </div>
+  </aside>
 
-    <!-- MODAL DE DETALLES DEL PUNTO (Integrado el Desglose Específico) -->
-    <div id="detailModal" class="fixed inset-0 bg-slate-900/90 backdrop-blur-md z-[500] hidden flex justify-center items-center p-4">
-        <div class="bg-white w-full max-w-5xl max-h-[95vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col relative">
-            <button onclick="closeModal('detailModal')" class="absolute top-5 right-5 w-10 h-10 bg-slate-200 rounded-full flex items-center justify-center font-black text-xl hover:bg-red-500 hover:text-white transition z-10 shadow">✕</button>
-            
-            <div class="bg-slate-900 text-white p-6 border-b-4 border-blue-600">
-                <div class="flex justify-between items-start pr-12">
-                    <div>
-                        <div class="flex gap-2 items-center mb-2">
-                            <span id="md-badge" class="px-3 py-1 bg-blue-600 rounded-full text-[10px] font-black uppercase tracking-widest shadow-inner">Auditoría</span>
-                            <span class="text-blue-300 text-xs font-mono font-bold" id="md-folio">CERT-000</span>
-                        </div>
-                        <h2 id="md-title" class="text-2xl font-black uppercase mt-1">Detalles del Registro</h2>
-                        <p id="md-meta" class="text-xs text-slate-400 mt-1 font-bold">Inspector | Fecha</p>
-                    </div>
-                    <div id="md-gravity-box" class="text-center bg-slate-800 p-3 rounded-xl border border-slate-700 hidden">
-                        <p class="text-[9px] uppercase font-black text-slate-400 tracking-widest mb-1" id="md-grav-title">Prioridad</p>
-                        <div id="md-gravity-score" class="text-3xl font-black text-red-500">0</div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="p-6 overflow-y-auto flex-1 bg-slate-50">
-                
-                <!-- SECCIÓN EVENTO / PROYECTO -->
-                <div id="md-gestion-box" class="hidden mb-6 bg-amber-50 border-2 border-amber-300 p-6 rounded-2xl shadow-sm">
-                    <h3 class="font-black text-amber-900 uppercase text-sm border-b-2 border-amber-200 pb-2 mb-4 flex items-center gap-2"><span>⭐</span> Ficha Técnica de Proyecto / Agenda</h3>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div class="space-y-4">
-                            <div><p class="text-[10px] font-black text-amber-600 uppercase tracking-widest">Tipo</p><p id="md-g-tipo" class="font-bold text-slate-800 text-lg">-</p></div>
-                            <div><p class="text-[10px] font-black text-amber-600 uppercase tracking-widest">Asunto / Título</p><p id="md-g-titulo" class="font-bold text-slate-800">-</p></div>
-                            <div><p class="text-[10px] font-black text-amber-600 uppercase tracking-widest">Justificación</p><p id="md-g-desc" class="text-sm text-slate-700 bg-white p-3 rounded-lg border border-amber-200 mt-1">-</p></div>
-                            
-                            <div class="bg-amber-100 p-3 rounded-xl border border-amber-300 grid grid-cols-2 gap-2">
-                                <div><p class="text-[10px] font-black text-amber-700 uppercase">📅 Fecha Asignada</p><p id="md-g-fecha" class="font-bold text-sm">-</p></div>
-                                <div><p class="text-[10px] font-black text-amber-700 uppercase">⏰ Hora</p><p id="md-g-hora" class="font-bold text-sm">-</p></div>
-                                <div class="col-span-2"><p class="text-[10px] font-black text-amber-700 uppercase mt-2">📱 Tel. / WhatsApp Coordinador</p><p id="md-g-wa" class="font-bold text-sm text-blue-600 underline">-</p></div>
-                            </div>
-                            
-                            <div><p class="text-[10px] font-black text-red-600 uppercase tracking-widest">Autoridades Convocadas</p><p id="md-g-auths" class="text-xs font-bold text-slate-800 bg-red-50 p-3 rounded-lg border border-red-200 mt-1">-</p></div>
-                        </div>
-                        <div class="grid grid-cols-1 gap-2 bg-white p-3 rounded-xl border border-amber-200 h-fit" id="md-g-fotos"></div>
-                    </div>
-                </div>
+  <!-- MAP -->
+  <main style="flex:1; position:relative;">
+    <div id="map"></div>
+    <button class="layer-toggle" id="layer-toggle-btn" onclick="toggleMapLayer()">🛰 Satélite</button>
+  </main>
+</div>
 
-                <!-- SECCIÓN AUDITORÍA -->
-                <div id="md-audit-box" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div class="lg:col-span-1">
-                        <h3 class="font-black text-slate-800 uppercase text-sm mb-3 border-b-2 border-slate-200 pb-2 flex justify-between items-center">
-                            📊 Evaluación de Indicadores
-                        </h3>
-                        <div id="md-indicadores-list" class="space-y-1 max-h-[400px] overflow-y-auto pr-2 hide-scrollbar"></div>
-                        
-                        <div class="mt-4 bg-blue-50 p-4 rounded-xl border border-blue-200">
-                            <h4 class="text-[10px] font-black uppercase text-blue-800 tracking-widest mb-2">Dependencias Recomendadas:</h4>
-                            <ul id="md-rec-auths" class="text-[10px] font-bold text-blue-900 list-disc pl-4 space-y-1"></ul>
-                        </div>
-                    </div>
+<!-- ════ MODAL DETALLE ═══ -->
+<div id="detailModal" class="overlay">
+  <div class="modal-box">
+    <div class="modal-head">
+      <button class="modal-close" onclick="closeOverlay('detailModal')">✕</button>
+      <div style="display:flex; gap:10px; align-items:center; margin-bottom:6px; flex-wrap:wrap;">
+        <span id="md-badge" style="font-family:var(--mono); font-size:9px; font-weight:700; padding:3px 10px; border-radius:99px; background:#2563eb; color:#bfdbfe; text-transform:uppercase; letter-spacing:.07em;">Auditoría</span>
+        <span id="md-folio" style="font-family:var(--mono); font-size:11px; color:#94a3b8;"></span>
+        <span id="md-gravity-badge" style="font-family:var(--mono); font-size:11px; font-weight:700; padding:3px 12px; border-radius:99px; display:none;"></span>
+      </div>
+      <div id="md-title" style="font-size:18px; font-weight:700; text-transform:uppercase; margin-bottom:2px;"></div>
+      <div id="md-meta" style="font-size:11px; color:#64748b;"></div>
+      <div id="md-gps" style="font-family:var(--mono); font-size:10px; color:#3b82f6; margin-top:3px;"></div>
+    </div>
+    <div class="modal-body" id="md-body"></div>
+  </div>
+</div>
 
-                    <div class="lg:col-span-2 space-y-6">
-                        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-                            <h3 class="font-black text-slate-800 uppercase text-sm mb-4 border-b-2 border-slate-100 pb-2">📋 Conclusiones del Evaluador</h3>
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div><p class="text-[10px] font-black text-red-500 uppercase tracking-widest">Problemáticas Generales</p><p id="md-probs" class="text-xs text-slate-700 mt-1 bg-slate-50 p-3 rounded-lg border border-slate-100">-</p></div>
-                                <div><p class="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Propuestas de Intervención</p><p id="md-props" class="text-xs text-slate-700 mt-1 bg-slate-50 p-3 rounded-lg border border-slate-100">-</p></div>
-                            </div>
-                        </div>
-                        
-                        <div>
-                            <h3 class="font-black text-slate-800 uppercase text-sm mb-3">📸 Evidencia Gráfica del Punto</h3>
-                            <div id="md-fotos-grid" class="grid grid-cols-2 md:grid-cols-3 gap-3"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+<!-- ════ MODAL CREAR EVENTO ═══ -->
+<div id="createModal" class="overlay">
+  <div class="create-box">
+    <div class="create-head">
+      <div>
+        <div style="font-family:var(--mono); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.07em;">Agendar Proyecto / Evento</div>
+        <div style="font-size:11px; opacity:.75; margin-top:2px;">GPS: <span id="create-coords" style="font-family:var(--mono);"></span></div>
+      </div>
+      <button onclick="closeOverlay('createModal')" style="background:rgba(0,0,0,.15); border:none; border-radius:50%; width:32px; height:32px; cursor:pointer; font-size:14px; display:flex; align-items:center; justify-content:center; color:#000;">✕</button>
+    </div>
+    <div class="create-body">
+      <form id="form-evento" style="display:flex; flex-direction:column; gap:14px;">
+        <div>
+          <label class="cf-label">Tipo de Registro</label>
+          <select id="c-tipo" class="cf-input">
+            <option value="Jornada de Limpieza">🧹 Jornada de Limpieza / Acción Ciudadana</option>
+            <option value="Proyecto de Infraestructura">🏗️ Proyecto de Mejora / Infraestructura</option>
+            <option value="Mesa de Trabajo en Campo">🤝 Mesa de Trabajo / Recorrido</option>
+            <option value="Incidencia Extraordinaria">⚠️ Incidencia / Evento Extraordinario</option>
+          </select>
         </div>
-    </div>
-
-    <!-- MODAL AGENDAR EVENTO / PROYECTO -->
-    <div id="createModal" class="fixed inset-0 bg-slate-900/90 backdrop-blur-md z-[600] hidden flex justify-center items-center p-4 overflow-y-auto hide-scrollbar">
-        <div class="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col my-8">
-            <div class="bg-amber-500 text-black p-6 flex justify-between items-center border-b-4 border-amber-600">
-                <div>
-                    <h2 class="text-2xl font-black uppercase">Agendar Proyecto o Evento</h2>
-                    <p class="text-xs font-bold opacity-80 mt-1">Georeferenciación: <span id="create-coords" class="font-mono"></span></p>
-                </div>
-                <button onclick="closeModal('createModal')" class="w-10 h-10 bg-black/10 rounded-full flex justify-center items-center font-bold text-black hover:bg-black hover:text-white transition">✕</button>
-            </div>
-            
-            <form id="form-nuevo-evento" class="p-6 md:p-8 space-y-5 bg-slate-50">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-                    <div class="md:col-span-2">
-                        <label class="block text-xs font-black uppercase text-slate-600 mb-1">Tipo de Registro</label>
-                        <select id="c-tipo" class="w-full bg-white border-2 border-slate-200 rounded-xl p-3 text-sm font-bold shadow-sm focus:border-amber-500 focus:outline-none">
-                            <option value="Jornada de Limpieza">🧹 Jornada de Limpieza / Acción Ciudadana</option>
-                            <option value="Proyecto de Infraestructura">🏗️ Proyecto de Mejora / Infraestructura</option>
-                            <option value="Mesa de Trabajo en Campo">🤝 Mesa de Trabajo / Recorrido</option>
-                            <option value="Incidencia Extraordinaria">⚠️ Incidencia / Evento Extraordinario</option>
-                        </select>
-                    </div>
-                    
-                    <div class="md:col-span-2">
-                        <label class="block text-xs font-black uppercase text-slate-600 mb-1">Título / Nombre del Evento</label>
-                        <input type="text" id="c-titulo" class="w-full bg-white border-2 border-slate-200 rounded-xl p-3 text-sm font-bold shadow-sm focus:border-amber-500 focus:outline-none" placeholder="Ej. Retiro de maleza masivo...">
-                    </div>
-
-                    <div class="md:col-span-2">
-                        <label class="block text-xs font-black uppercase text-slate-600 mb-1">Actividades Detalladas</label>
-                        <textarea id="c-desc" class="w-full bg-white border-2 border-slate-200 rounded-xl p-3 text-sm min-h-[80px] shadow-sm focus:border-amber-500 focus:outline-none" placeholder="Justificación técnica, maquinaria necesaria..."></textarea>
-                    </div>
-
-                    <div>
-                        <label class="block text-xs font-black uppercase text-slate-600 mb-1">📅 Fecha Definida</label>
-                        <input type="date" id="c-fecha" class="w-full bg-white border-2 border-slate-200 rounded-xl p-3 text-sm font-bold shadow-sm focus:border-amber-500 focus:outline-none">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-black uppercase text-slate-600 mb-1">⏰ Horario</label>
-                        <input type="time" id="c-hora" class="w-full bg-white border-2 border-slate-200 rounded-xl p-3 text-sm font-bold shadow-sm focus:border-amber-500 focus:outline-none">
-                    </div>
-                    <div class="md:col-span-2">
-                        <label class="block text-xs font-black uppercase text-slate-600 mb-1">📱 WhatsApp para Coordinación</label>
-                        <input type="tel" id="c-wa" class="w-full bg-white border-2 border-slate-200 rounded-xl p-3 text-sm font-bold shadow-sm focus:border-amber-500 focus:outline-none" placeholder="10 dígitos">
-                    </div>
-
-                    <div class="md:col-span-2 bg-white p-5 rounded-xl border-2 border-red-100 shadow-sm mt-2">
-                        <label class="block text-xs font-black uppercase text-red-600 mb-3 border-b border-red-100 pb-2">🛡️ Convocar Dependencias</label>
-                        <div class="grid grid-cols-2 md:grid-cols-3 gap-3" id="c-autoridades-checkboxes">
-                            <label class="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer"><input type="checkbox" value="Protección Civil" class="w-4 h-4 accent-red-500"> Protección Civil</label>
-                            <label class="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer"><input type="checkbox" value="Bomberos" class="w-4 h-4 accent-red-500"> Bomberos</label>
-                            <label class="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer"><input type="checkbox" value="Seguridad Pública" class="w-4 h-4 accent-red-500"> Seg. Pública Municipal</label>
-                            <label class="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer"><input type="checkbox" value="Obras Públicas" class="w-4 h-4 accent-red-500"> Obras Públicas</label>
-                            <label class="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer"><input type="checkbox" value="SIDURT" class="w-4 h-4 accent-red-500"> SIDURT</label>
-                            <label class="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer"><input type="checkbox" value="CONAGUA" class="w-4 h-4 accent-red-500"> CONAGUA</label>
-                            <label class="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer"><input type="checkbox" value="SPA" class="w-4 h-4 accent-red-500"> SPA (Medio Ambiente)</label>
-                            <label class="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer"><input type="checkbox" value="DIF / Bienestar" class="w-4 h-4 accent-red-500"> DIF / Bienestar</label>
-                            <label class="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer"><input type="checkbox" value="INPRODEUR" class="w-4 h-4 accent-red-500"> INPRODEUR</label>
-                        </div>
-                    </div>
-
-                    <div class="md:col-span-2 bg-white p-5 border-2 border-dashed border-slate-300 rounded-xl text-center hover:bg-slate-50 transition">
-                        <label class="cursor-pointer block w-full">
-                            <span class="block text-3xl mb-2">📸</span>
-                            <span class="text-sm font-black text-blue-600 uppercase">Fotografía Conceptual (Opcional)</span>
-                            <input type="file" id="c-foto" accept="image/*" class="hidden" onchange="previewAdminPhoto(this)">
-                        </label>
-                        <img id="c-foto-preview" class="w-full max-h-48 object-contain rounded-lg mt-4 hidden mx-auto border border-slate-200">
-                    </div>
-                </div>
-
-                <div class="pt-4 border-t-2 border-slate-200">
-                    <button type="button" onclick="saveAdminEvent()" class="w-full bg-slate-900 text-white font-black uppercase text-lg py-5 rounded-2xl shadow-xl hover:bg-black transition-all transform hover:scale-[1.02]" id="btn-save-admin">✅ PUBLICAR EN MAPA</button>
-                </div>
-            </form>
+        <div>
+          <label class="cf-label">Título / Nombre *</label>
+          <input type="text" id="c-titulo" class="cf-input" placeholder="Ej. Retiro de maleza masivo…">
         </div>
+        <div>
+          <label class="cf-label">Actividades / Justificación</label>
+          <textarea id="c-desc" class="cf-input" style="min-height:70px; resize:none;" placeholder="Descripción técnica, maquinaria necesaria…"></textarea>
+        </div>
+        <div class="cf-grid">
+          <div>
+            <label class="cf-label">📅 Fecha</label>
+            <input type="date" id="c-fecha" class="cf-input">
+          </div>
+          <div>
+            <label class="cf-label">⏰ Hora</label>
+            <input type="time" id="c-hora" class="cf-input">
+          </div>
+        </div>
+        <div>
+          <label class="cf-label">📱 WhatsApp Coordinador</label>
+          <input type="tel" id="c-wa" class="cf-input" placeholder="10 dígitos">
+        </div>
+        <div style="background:#fff5f5; border:1.5px solid #fecaca; border-radius:12px; padding:14px;">
+          <label class="cf-label" style="color:#991b1b;">🛡️ Convocar Dependencias</label>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:6px;" id="c-deps">
+            <label style="display:flex; align-items:center; gap:7px; font-size:12px; font-weight:500; color:#374151; cursor:pointer;"><input type="checkbox" value="Protección Civil" style="accent-color:#dc2626;"> Protección Civil</label>
+            <label style="display:flex; align-items:center; gap:7px; font-size:12px; font-weight:500; color:#374151; cursor:pointer;"><input type="checkbox" value="Bomberos" style="accent-color:#dc2626;"> Bomberos</label>
+            <label style="display:flex; align-items:center; gap:7px; font-size:12px; font-weight:500; color:#374151; cursor:pointer;"><input type="checkbox" value="Seguridad Pública" style="accent-color:#dc2626;"> Seg. Pública</label>
+            <label style="display:flex; align-items:center; gap:7px; font-size:12px; font-weight:500; color:#374151; cursor:pointer;"><input type="checkbox" value="Obras Públicas" style="accent-color:#dc2626;"> Obras Públicas</label>
+            <label style="display:flex; align-items:center; gap:7px; font-size:12px; font-weight:500; color:#374151; cursor:pointer;"><input type="checkbox" value="SIDURT" style="accent-color:#dc2626;"> SIDURT</label>
+            <label style="display:flex; align-items:center; gap:7px; font-size:12px; font-weight:500; color:#374151; cursor:pointer;"><input type="checkbox" value="CONAGUA" style="accent-color:#dc2626;"> CONAGUA</label>
+            <label style="display:flex; align-items:center; gap:7px; font-size:12px; font-weight:500; color:#374151; cursor:pointer;"><input type="checkbox" value="SPA" style="accent-color:#dc2626;"> SPA (Medio Ambiente)</label>
+            <label style="display:flex; align-items:center; gap:7px; font-size:12px; font-weight:500; color:#374151; cursor:pointer;"><input type="checkbox" value="DIF / Bienestar" style="accent-color:#dc2626;"> DIF / Bienestar</label>
+            <label style="display:flex; align-items:center; gap:7px; font-size:12px; font-weight:500; color:#374151; cursor:pointer;"><input type="checkbox" value="INPRODEUR" style="accent-color:#dc2626;"> INPRODEUR</label>
+          </div>
+        </div>
+        <div style="border:1.5px dashed #cbd5e1; border-radius:12px; padding:14px; text-align:center; cursor:pointer;" onclick="document.getElementById('c-foto').click()">
+          <div style="font-size:24px; margin-bottom:4px;">📸</div>
+          <div style="font-family:var(--mono); font-size:9px; font-weight:700; color:#2563eb; text-transform:uppercase; letter-spacing:.07em;">Foto Conceptual (Opcional)</div>
+          <input type="file" id="c-foto" accept="image/*" style="display:none" onchange="previewAdminPhoto(this)">
+          <img id="c-foto-preview" style="width:100%; max-height:160px; object-contain; border-radius:8px; margin-top:10px; display:none;">
+        </div>
+        <button type="button" id="btn-save-evento" onclick="saveAdminEvent()"
+          style="width:100%; padding:16px; background:#0f172a; color:#e2e8f0; border:none; border-radius:12px; font-family:var(--mono); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.07em; cursor:pointer; transition:background .15s;">
+          ✅ Publicar en Mapa
+        </button>
+      </form>
     </div>
+  </div>
+</div>
 
-    <script>
-        // --- ESTRUCTURA DE LA BASE TÉCNICA ---
-        const seccionesCat = [
-            { titulo: "Infraestructura Urbana", prefix: "infra", items: ["Flujo del agua", "Contaminación (Basura)", "Sedimentación", "Obstrucciones", "Muros de contención", "Estado de estructuras", "Descargas pluviales", "Cantidad de puentes", "Seguridad de cruces"] },
-            { titulo: "Medio Ambiente", prefix: "amb", items: ["Vegetación en cauce", "Vegetación ribereña", "Presencia de fauna", "Áreas naturales", "Riesgo inundación", "Erosión suelo", "Acumulación residuos", "Infiltración", "Basureros clandestinos", "Descargas contaminantes"] },
-            { titulo: "Desarrollo Social", prefix: "soc", items: ["Viviendas zona federal", "Construcciones irregulares", "Invasión borde río", "Uso informal suelo", "Personas situación calle", "Espacios abandonados", "Áreas comunitarias"] },
-            { titulo: "Seguridad Ciudadana", prefix: "seg", items: ["Calles cercanas", "Banquetas/Accesos", "Alumbrado público", "Equipamiento urbano", "Vigilancia de zona", "Zona peligrosa / Insegura", "Personas en situación de calle", "Grafitis / Vandalismo", "Muestras de fogatas", "Tránsito de personas"] }
-        ];
+<div id="toast"></div>
 
-        // --- ESTADO LOCAL ---
-        let currentTab = 'all'; 
-        let activeSubFilters = new Set(); 
-        
-        let mapMarkers = [];
-        let isAddMode = false;
-        let tempCoords = null;
-        let adminTempPhotoData = null;
+<!-- ════ SCRIPTS ═══ -->
+<script>
+/* ═══════════════════════════════════════════
+   ESTRUCTURA DE SECCIONES (igual que index 3.0)
+═══════════════════════════════════════════ */
+const SECCIONES = [
+  { titulo:"Infraestructura Urbana",  prefix:"infra", items:["Flujo del agua","Contaminación (Basura)","Sedimentación","Obstrucciones","Muros de contención","Estado de estructuras","Descargas pluviales","Cantidad de puentes","Seguridad de cruces"] },
+  { titulo:"Medio Ambiente",          prefix:"amb",   items:["Vegetación en cauce","Vegetación ribereña","Presencia de fauna","Áreas naturales","Riesgo inundación","Erosión suelo","Acumulación residuos","Infiltración","Basureros clandestinos","Descargas contaminantes"] },
+  { titulo:"Desarrollo Social",       prefix:"soc",   items:["Viviendas zona federal","Construcciones irregulares","Invasión borde río","Uso informal suelo","Personas situación calle","Espacios abandonados","Áreas comunitarias"] },
+  { titulo:"Seguridad Ciudadana",     prefix:"seg",   items:["Calles cercanas","Banquetas/Accesos","Alumbrado público","Equipamiento urbano","Vigilancia de zona","Zona peligrosa / Insegura","Personas en situación de calle","Grafitis / Vandalismo","Muestras de fogatas","Tránsito de personas"] }
+];
 
-        // Inicializar Mapa
-        const map = L.map('map', { zoomControl: false }).setView([32.5683, -116.6268], 14);
-        L.control.zoom({ position: 'bottomright' }).addTo(map);
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 20 }).addTo(map);
+/* ═══════════════════════════════════════════
+   ESTADO
+═══════════════════════════════════════════ */
+let currentTab      = 'all';
+let activeSubFilters = new Set();
+let filterInspector = '';
+let filterFecha     = '';
+let isAddMode       = false;
+let tempCoords      = null;
+let adminPhotoB64   = null;
+let mapMarkers      = [];
+let cartoLayer, satelliteLayer, currentLayerMode = 'streets';
 
-        // --- SISTEMA DE PESTAÑAS ---
-        window.switchTab = function(tab, btnElement) {
-            currentTab = tab;
-            activeSubFilters.clear(); // Limpiar filtros de indicadores al cambiar de pestaña
+/* ═══════════════════════════════════════════
+   MAPA
+═══════════════════════════════════════════ */
+const map = L.map('map', { zoomControl: false }).setView([32.5683, -116.6268], 14);
+L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-            // Actualizar botones UI
-            document.querySelectorAll('.tab-btn').forEach(el => {
-                el.classList.remove('border-blue-500', 'text-blue-400', 'bg-blue-500/10', 'text-amber-400', 'border-amber-500', 'bg-amber-500/10');
-                el.classList.add('border-transparent', 'text-slate-400');
-            });
+cartoLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 20
+}).addTo(map);
 
-            if (btnElement) {
-                btnElement.classList.remove('border-transparent', 'text-slate-400');
-                if (tab === 'acciones') btnElement.classList.add('border-amber-500', 'text-amber-400', 'bg-amber-500/10');
-                else btnElement.classList.add('border-blue-500', 'text-blue-400', 'bg-blue-500/10');
-                
-                // Actualizar Título Sidebar
-                const titles = { 'all':'Consolidado General', 'infra':'Evaluación de Infraestructura', 'amb':'Mapeo de Medio Ambiente', 'soc':'Problemáticas Sociales', 'seg':'Zonas de Seguridad', 'acciones':'Agenda y Gestiones' };
-                document.getElementById('sidebar-subtitle').innerText = titles[tab];
-            }
+satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+  attribution: '&copy; Esri', maxZoom: 20
+});
 
-            updateSidebarContent();
-            renderMapMarkers();
-        }
+function toggleMapLayer() {
+  const btn = document.getElementById('layer-toggle-btn');
+  if (currentLayerMode === 'streets') {
+    map.removeLayer(cartoLayer);
+    map.addLayer(satelliteLayer);
+    currentLayerMode = 'satellite';
+    btn.textContent = '🗺 Calles';
+  } else {
+    map.removeLayer(satelliteLayer);
+    map.addLayer(cartoLayer);
+    currentLayerMode = 'streets';
+    btn.textContent = '🛰 Satélite';
+  }
+}
 
-        // --- RENDERIZADO DEL SIDEBAR DINÁMICO ---
-        function updateSidebarContent() {
-            const container = document.getElementById('dynamic-sidebar');
-            container.innerHTML = '';
+/* ═══════════════════════════════════════════
+   CONTADORES Y FILTROS DINÁMICOS
+═══════════════════════════════════════════ */
+function refreshCounters() {
+  const all    = window.allRecords || [];
+  const today  = new Date().toLocaleDateString('es-MX');
+  const todayR = all.filter(r => r.fecha_captura === today);
 
-            if (currentTab === 'all') {
-                container.innerHTML = `
-                    <div class="bg-slate-800/50 p-5 rounded-2xl border border-slate-700">
-                        <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 border-b border-slate-700 pb-2">Índice Topológico (Prioridad)</h3>
-                        <div class="space-y-4 text-xs font-bold text-slate-200">
-                            <div class="flex items-center gap-3"><span class="w-5 h-5 rounded-full bg-red-500 border-2 border-red-900 shadow-[0_0_10px_rgba(239,68,68,0.8)]"></span> Atención Urgente (Múltiples Graves)</div>
-                            <div class="flex items-center gap-3"><span class="w-5 h-5 rounded-full bg-amber-500 border-2 border-amber-900"></span> Prevención a Corto Plazo</div>
-                            <div class="flex items-center gap-3"><span class="w-5 h-5 rounded-full bg-green-500 border-2 border-green-900"></span> Zona Calificada Estable</div>
-                            <div class="flex items-center gap-3 mt-4 pt-4 border-t border-slate-700"><div class="m-acciones scale-75">⭐</div> Proyectos / Eventos Agendados</div>
-                        </div>
-                    </div>
-                `;
-            } else if (currentTab === 'acciones') {
-                let html = `<h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 border-b border-slate-700 pb-2">Eventos y Agenda</h3><div class="space-y-3">`;
-                const eventos = window.allRecords.filter(r => r.tipo_inspeccion === 'admin_gestion' || r.tipo_inspeccion === 'acciones' || (r.gestion_titulo && r.gestion_titulo.length > 2));
-                
-                eventos.forEach(ev => {
-                    html += `
-                    <div class="bg-slate-800 border border-amber-500/40 p-4 rounded-xl cursor-pointer hover:bg-slate-700 transition" onclick="centerMapOn(${ev.lat}, ${ev.lng})">
-                        <p class="text-xs font-black text-amber-400 uppercase leading-tight">${ev.gestion_titulo}</p>
-                        <div class="flex gap-3 text-[10px] text-slate-300 mt-2 font-bold bg-slate-900/50 p-2 rounded-lg inline-flex">
-                            <span>📅 ${ev.gestion_fecha || 'Pendiente'}</span>
-                            <span class="border-l border-slate-700 pl-3">⏰ ${ev.gestion_hora || '---'}</span>
-                        </div>
-                    </div>`;
-                });
-                if(eventos.length === 0) html += `<p class="text-xs text-slate-500 font-bold text-center mt-5 bg-slate-800 p-4 rounded-xl border border-slate-700">No hay proyectos mapeados.</p>`;
-                html += `</div>`;
-                container.innerHTML = html;
-            } else {
-                // Generar Filtros de Indicadores para Bloque Específico
-                const sec = seccionesCat.find(s => s.prefix === currentTab);
-                let html = `<div class="mb-4 bg-blue-900/20 p-4 rounded-xl border border-blue-500/20"><p class="text-xs text-blue-200">Seleccione los indicadores para aislar en el mapa exactamente en qué puntos falló esa métrica.</p></div>
-                            <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 border-b border-slate-700 pb-2">Filtros de Indicador</h3><div class="space-y-2">`;
-                
-                sec.items.forEach((item, idx) => {
-                    let fallos = 0;
-                    window.allRecords.forEach(r => {
-                        if (r.tipo_inspeccion === currentTab || r.tipo_inspeccion === 'completa') {
-                            let val = r[`${sec.prefix}_v_${idx}`];
-                            if (val === 'M' || val === 'R') fallos++;
-                        }
-                    });
+  // Críticos: score global ≥ 12
+  const critCount = all.filter(r => !isAdminRecord(r) && calcGravity(r,'all').score >= 12).length;
 
-                    // Solo habilitar si hay fallos mapeados
-                    const isChecked = activeSubFilters.has(idx) ? 'checked' : '';
-                    const disabledClass = fallos === 0 ? 'opacity-40 cursor-not-allowed pointer-events-none' : 'cursor-pointer hover:bg-slate-800';
-                    
-                    html += `
-                    <label class="flex items-center justify-between text-xs p-3 rounded-xl transition border border-slate-700/50 bg-slate-800/30 ${disabledClass}">
-                        <div class="flex items-center gap-3">
-                            <input type="checkbox" value="${idx}" onchange="toggleSubFilter(${idx})" class="accent-blue-500 w-4 h-4" ${isChecked}>
-                            <span class="${fallos > 0 ? 'text-slate-200 font-bold' : 'text-slate-500'}">${item}</span>
-                        </div>
-                        ${fallos > 0 ? `<span class="bg-red-500/20 text-red-400 px-2 py-1 rounded-md text-[9px] font-black">${fallos} Reportes</span>` : '<span class="text-[9px] text-green-500 font-black bg-green-900/20 px-2 py-1 rounded-md">Limpio</span>'}
-                    </label>
-                    `;
-                });
-                html += `</div>`;
-                container.innerHTML = html;
-            }
-        }
+  document.getElementById('cnt-total').textContent    = all.length;
+  document.getElementById('cnt-today').textContent    = todayR.length;
+  document.getElementById('cnt-critical').textContent = critCount;
 
-        window.toggleSubFilter = function(idx) {
-            if (activeSubFilters.has(idx)) activeSubFilters.delete(idx);
-            else activeSubFilters.add(idx);
-            renderMapMarkers();
-        }
+  // Poblar selects de filtro
+  const inspSet  = new Set(all.map(r => r.inspector).filter(Boolean));
+  const fechaSet = new Set(all.map(r => r.fecha_captura).filter(Boolean));
 
-        window.centerMapOn = function(lat, lng) {
-            map.setView([lat, lng], 18, { animate: true });
-        }
+  const selInsp = document.getElementById('filter-inspector');
+  const selFech = document.getElementById('filter-fecha');
+  const prevInsp = selInsp.value;
+  const prevFech = selFech.value;
 
-        // --- ALGORITMO DE GRAVEDAD DINÁMICO ---
-        // Calcula los puntos solo para la pestaña activa
-        function calculateLocalGravity(record, tabScope) {
-            let score = 0;
-            let resultados = { M: [], R: [], B: [], NE: [] };
-            let autoridades = new Set();
-            let isGlobal = tabScope === 'all';
+  selInsp.innerHTML = '<option value="">Todos los inspectores</option>' +
+    [...inspSet].sort().map(i => `<option value="${i}" ${i===prevInsp?'selected':''}>${i}</option>`).join('');
+  selFech.innerHTML = '<option value="">Todas las fechas</option>' +
+    [...fechaSet].sort().reverse().map(f => `<option value="${f}" ${f===prevFech?'selected':''}>${f}</option>`).join('');
+}
 
-            seccionesCat.forEach(sec => {
-                if (!isGlobal && sec.prefix !== tabScope) return; // Ignorar si estamos en una pestaña específica
+function applyFilters() {
+  filterInspector = document.getElementById('filter-inspector').value;
+  filterFecha     = document.getElementById('filter-fecha').value;
+  updateSidebarContent();
+  renderMapMarkers();
+}
 
-                sec.items.forEach((item, idx) => {
-                    let key = `${sec.prefix}_v_${idx}`;
-                    let val = record[key];
-                    
-                    if (val === 'M') { // Malo = 3 Puntos
-                        score += 3;
-                        resultados.M.push({ sec: sec.titulo, item: item });
-                        if(sec.prefix === 'infra') autoridades.add('Obras Públicas / SIDURT');
-                        if(sec.prefix === 'amb') autoridades.add('SPA / CONAGUA');
-                        if(sec.prefix === 'soc') autoridades.add('DIF / Secretaría de Bienestar');
-                        if(sec.prefix === 'seg') autoridades.add('Seguridad Pública Municipal');
-                    } else if (val === 'R') { // Regular = 1 Punto
-                        score += 1;
-                        resultados.R.push({ sec: sec.titulo, item: item });
-                    } else if (val === 'B') { // Bueno = 0 Puntos
-                        resultados.B.push({ sec: sec.titulo, item: item });
-                    } else { // N/E (No evaluado/No aplica) = 0 Puntos
-                        resultados.NE.push({ sec: sec.titulo, item: item });
-                    }
-                });
-            });
+function getFilteredRecords() {
+  return (window.allRecords || []).filter(r => {
+    if (filterInspector && r.inspector !== filterInspector) return false;
+    if (filterFecha     && r.fecha_captura !== filterFecha) return false;
+    return true;
+  });
+}
 
-            return { score, resultados, autoridades: Array.from(autoridades) };
-        }
+/* ═══════════════════════════════════════════
+   TABS
+═══════════════════════════════════════════ */
+function switchTab(tab, btn) {
+  currentTab = tab;
+  activeSubFilters.clear();
+  document.querySelectorAll('.tnav-btn').forEach(b => b.className = 'tnav-btn');
+  if (btn) btn.className = 'tnav-btn ' + (tab === 'acciones' ? 'active-amber' : 'active-blue');
+  const titles = { all:'Consolidado General', infra:'Infraestructura Urbana',
+    amb:'Medio Ambiente', soc:'Desarrollo Social', seg:'Seguridad Ciudadana', acciones:'Agenda y Proyectos' };
+  document.getElementById('sidebar-subtitle').textContent = titles[tab] || '';
+  updateSidebarContent();
+  renderMapMarkers();
+}
 
-        function renderMapMarkers() {
-            mapMarkers.forEach(m => map.removeLayer(m));
-            mapMarkers = [];
+/* ═══════════════════════════════════════════
+   SIDEBAR DINÁMICO
+═══════════════════════════════════════════ */
+function updateSidebarContent() {
+  const el = document.getElementById('dynamic-sidebar');
+  const records = getFilteredRecords();
 
-            window.allRecords.forEach(record => {
-                let rLat = record.lat;
-                let rLng = record.lng;
+  if (currentTab === 'all') {
+    el.innerHTML = `
+      <div style="background:#1e293b; border-radius:12px; padding:14px; margin-bottom:14px;">
+        <div style="font-family:var(--mono); font-size:9px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.07em; border-bottom:1px solid #334155; padding-bottom:8px; margin-bottom:10px;">Índice de Prioridad</div>
+        <div class="leg-item"><span style="width:16px;height:16px;border-radius:50%;background:#ef4444;flex-shrink:0;box-shadow:0 0 8px rgba(239,68,68,.7);"></span> Atención Urgente</div>
+        <div class="leg-item"><span style="width:16px;height:16px;border-radius:50%;background:#f59e0b;flex-shrink:0;"></span> Prevención a Corto Plazo</div>
+        <div class="leg-item"><span style="width:16px;height:16px;border-radius:50%;background:#22c55e;flex-shrink:0;"></span> Zona Estable</div>
+        <div class="leg-item" style="margin-top:8px; padding-top:8px; border-top:1px solid #334155;"><span style="width:16px;height:16px;border-radius:50%;background:#eab308;flex-shrink:0; display:flex;align-items:center;justify-content:center;font-size:9px;">⭐</span> Proyecto / Agenda</div>
+      </div>
+      <div style="background:#1e293b; border-radius:12px; padding:14px;">
+        <div style="font-family:var(--mono); font-size:9px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.07em; border-bottom:1px solid #334155; padding-bottom:8px; margin-bottom:10px;">Resumen por Sección</div>
+        ${SECCIONES.map(sec => {
+          const fallos = records.filter(r => !isAdminRecord(r)).reduce((acc,r) => {
+            return acc + sec.items.filter((_,i) => r[`${sec.prefix}_v_${i}`]==='M').length;
+          }, 0);
+          return `<div style="display:flex;justify-content:space-between;font-size:12px;padding:5px 0;border-bottom:1px solid #1e293b;">
+            <span style="color:#cbd5e1;">${sec.titulo}</span>
+            <span style="${fallos>0?'color:#f87171;':'color:#4ade80;'} font-family:var(--mono);font-size:10px;font-weight:700;">${fallos>0?fallos+' críticos':'Limpio'}</span>
+          </div>`;
+        }).join('')}
+      </div>`;
 
-                // PARCHE DE EMERGENCIA: Extraer coordenadas si se guardaron como 0
-                if ((!rLat || rLat === 0) && record.gps_coords && record.gps_coords.includes('LAT:')) {
-                    try {
-                        const parts = record.gps_coords.split('|');
-                        rLat = parseFloat(parts[0].replace('LAT:', '').trim());
-                        rLng = parseFloat(parts[1].replace('LNG:', '').trim());
-                    } catch(e) {}
-                }
-                
-                // Respaldo secundario por versiones antiguas
-                if ((!rLat || rLat === 0) && record.coordenadas && record.coordenadas.includes(',')) {
-                    try {
-                        const parts = record.coordenadas.split(',');
-                        rLat = parseFloat(parts[0].trim());
-                        rLng = parseFloat(parts[1].trim());
-                    } catch(e) {}
-                }
+  } else if (currentTab === 'acciones') {
+    const eventos = records.filter(r => isAdminRecord(r));
+    let html = `<div style="font-family:var(--mono);font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px;">${eventos.length} Evento${eventos.length!==1?'s':''} registrado${eventos.length!==1?'s':''}</div>`;
+    if (eventos.length === 0) {
+      html += `<div style="background:#1e293b;border-radius:12px;padding:20px;text-align:center;font-size:12px;color:#475569;font-weight:500;">No hay proyectos agendados.</div>`;
+    } else {
+      eventos.forEach(ev => {
+        html += `<div class="ev-card" onclick="centerOn(${ev.lat},${ev.lng})">
+          <div class="ev-title">${ev.gestion_titulo || 'Evento sin título'}</div>
+          <div class="ev-meta">${ev.gestion_tipo || '-'}</div>
+          <div class="ev-meta" style="margin-top:4px;">📅 ${ev.gestion_fecha||'Sin fecha'} · ⏰ ${ev.gestion_hora||'--:--'}</div>
+        </div>`;
+      });
+    }
+    el.innerHTML = html;
 
-                if (!rLat || !rLng || rLat === 0 || rLng === 0) return;
-                
-                record.lat = rLat; // Actualizar localmente para el resto del código
-                record.lng = rLng;
+  } else {
+    const sec = SECCIONES.find(s => s.prefix === currentTab);
+    if (!sec) return;
+    let html = `<div style="background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.2);border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:#93c5fd;">Selecciona indicadores para filtrar los puntos del mapa donde falló esa métrica.</div>
+    <div style="font-family:var(--mono);font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;">Filtros de Indicador</div>`;
+    sec.items.forEach((item, idx) => {
+      let fallos = records.filter(r => !isAdminRecord(r) && (r.tipo === currentTab || r.tipo === 'completa')).filter(r => r[`${sec.prefix}_v_${idx}`]==='M'||r[`${sec.prefix}_v_${idx}`]==='R').length;
+      const checked = activeSubFilters.has(idx) ? 'checked' : '';
+      const disabled = fallos === 0 ? 'disabled' : '';
+      html += `<label class="sf-row${fallos===0?' disabled':''}">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <input type="checkbox" value="${idx}" ${checked} ${disabled} onchange="toggleSubFilter(${idx})" style="accent-color:#3b82f6;width:14px;height:14px;">
+          <span style="font-size:12px;font-weight:500;color:${fallos>0?'#cbd5e1':'#475569'};">${item}</span>
+        </div>
+        ${fallos>0?`<span class="sf-count-bad">${fallos}</span>`:`<span class="sf-count-ok">OK</span>`}
+      </label>`;
+    });
+    el.innerHTML = html;
+  }
+}
 
-                // 1. Decidir si el registro aplica para la pestaña actual
-                let isAccion = record.tipo_inspeccion === 'admin_gestion' || record.tipo_inspeccion === 'acciones' || (record.gestion_titulo && record.gestion_titulo.length > 2);
-                let appliesToTab = false;
-                
-                if (currentTab === 'all') appliesToTab = true;
-                else if (currentTab === 'acciones' && isAccion) appliesToTab = true;
-                else if (currentTab !== 'acciones' && !isAccion) {
-                    if (record.tipo_inspeccion === currentTab || record.tipo_inspeccion === 'completa') appliesToTab = true;
-                }
+function toggleSubFilter(idx) {
+  if (activeSubFilters.has(idx)) activeSubFilters.delete(idx);
+  else activeSubFilters.add(idx);
+  renderMapMarkers();
+}
 
-                if (!appliesToTab) return;
+/* ═══════════════════════════════════════════
+   ALGORITMO DE GRAVEDAD
+═══════════════════════════════════════════ */
+function calcGravity(record, tabScope) {
+  let score = 0;
+  const r = { M:[], R:[], B:[], NE:[] };
+  const auths = new Set();
+  SECCIONES.forEach(sec => {
+    if (tabScope !== 'all' && sec.prefix !== tabScope) return;
+    sec.items.forEach((item, idx) => {
+      const val = record[`${sec.prefix}_v_${idx}`];
+      if      (val === 'M') { score += 3; r.M.push({sec:sec.titulo, item}); if(sec.prefix==='infra') auths.add('Obras Públicas / SIDURT'); if(sec.prefix==='amb') auths.add('SPA / CONAGUA'); if(sec.prefix==='soc') auths.add('DIF / Bienestar'); if(sec.prefix==='seg') auths.add('Seguridad Pública Municipal'); }
+      else if (val === 'R') { score += 1; r.R.push({sec:sec.titulo, item}); }
+      else if (val === 'B') { r.B.push({sec:sec.titulo, item}); }
+      else                  { r.NE.push({sec:sec.titulo, item}); }
+    });
+  });
+  return { score, r, auths: [...auths] };
+}
 
-                // 2. Si hay subfiltros activos en la pestaña, verificar si el registro tiene un fallo en ese indicador
-                if (currentTab !== 'all' && currentTab !== 'acciones' && activeSubFilters.size > 0) {
-                    let matchesFilter = false;
-                    activeSubFilters.forEach(idx => {
-                        let val = record[`${currentTab}_v_${idx}`];
-                        if (val === 'M' || val === 'R') matchesFilter = true;
-                    });
-                    if (!matchesFilter) return; // Ocultar punto si no tiene el problema seleccionado
-                }
+function isAdminRecord(r) {
+  return r.tipo === 'admin_gestion' || r.tipo_inspeccion === 'admin_gestion' ||
+         (r.gestion_titulo && r.gestion_titulo.length > 2 && !r.lat_audit);
+}
 
-                // 3. Calcular gravedad según contexto de la pestaña
-                const gravInfo = isAccion ? {score:0, fallos:[]} : calculateLocalGravity(record, currentTab);
-                record._gravedad_local = gravInfo; // Guardar temporal para Modal
-                
-                // 4. Crear Marcador
-                let markerHtml = '';
-                let size = 25;
+/* ═══════════════════════════════════════════
+   RENDER MARKERS
+═══════════════════════════════════════════ */
+function renderMapMarkers() {
+  mapMarkers.forEach(m => map.removeLayer(m));
+  mapMarkers = [];
 
-                if (isAccion) {
-                    markerHtml = `<div class="m-acciones text-lg">⭐</div>`;
-                    size = 32;
-                } else {
-                    let levelClass = 'sev-low';
-                    // Escalas dinámicas: Si vemos "Global", el puntaje máximo es ~100. Si vemos un "Bloque", es ~30.
-                    let highThresh = currentTab === 'all' ? 12 : 6;  // Global: 4 graves. Bloque: 2 graves.
-                    let medThresh = currentTab === 'all' ? 4 : 2;
+  const records = getFilteredRecords();
 
-                    if (gravInfo.score >= highThresh) { levelClass = 'sev-high'; size = currentTab === 'all' ? 45 : 40; }
-                    else if (gravInfo.score >= medThresh) { levelClass = 'sev-med'; size = currentTab === 'all' ? 35 : 30; }
-                    
-                    markerHtml = `<div class="sev-marker ${levelClass}" style="width:${size}px; height:${size}px; font-size:${size*0.4}px">${gravInfo.score}</div>`;
-                }
+  records.forEach(record => {
+    const lat = parseFloat(record.lat);
+    const lng = parseFloat(record.lng);
+    if (!lat || !lng || lat === 0 || lng === 0) return;
 
-                const marker = L.marker([record.lat, record.lng], {
-                    icon: L.divIcon({ className: 'custom-div-icon', html: markerHtml, iconSize: [size, size], iconAnchor: [size/2, size/2] })
-                }).addTo(map);
-                
-                // Tooltip Analítico
-                let tipTitle = record.lugar_tramo || "Punto Auditado";
-                if(isAccion) tipTitle = `⭐ ${record.gestion_titulo}`;
-                
-                let tooltipContent = `<div class="min-w-[150px]"><strong class="text-xs uppercase border-b border-slate-600 block pb-1 mb-2">${tipTitle}</strong>`;
-                if(isAccion) {
-                    tooltipContent += `<p class="text-[10px] text-amber-400">📅 ${record.gestion_fecha||'Sin agendar'}</p></div>`;
-                } else {
-                    let totalAlertas = gravInfo.resultados.M.length + gravInfo.resultados.R.length;
-                    if(totalAlertas > 0) {
-                        tooltipContent += `<ul class="text-[10px] space-y-1 font-bold">`;
-                        let shown = 0;
-                        gravInfo.resultados.M.forEach(f => { if(shown < 3) { tooltipContent += `<li>🔴 ${f.item}</li>`; shown++; } });
-                        gravInfo.resultados.R.forEach(f => { if(shown < 3) { tooltipContent += `<li>🟡 ${f.item}</li>`; shown++; } });
-                        if(totalAlertas > 3) tooltipContent += `<li class="text-slate-400 italic">+${totalAlertas - 3} más...</li>`;
-                        tooltipContent += `</ul></div>`;
-                    } else {
-                        tooltipContent += `<span class="text-[10px] text-green-400 font-bold">✅ Zona Estable</span></div>`;
-                    }
-                }
+    const isAdmin = isAdminRecord(record);
 
-                marker.bindTooltip(tooltipContent, { direction: 'top', offset: [0, -10], className: 'custom-tooltip' });
-                marker.on('click', () => openDetailModal(record));
-                mapMarkers.push(marker);
-            });
-        }
+    // Filtro por tab
+    if (currentTab !== 'all') {
+      if (currentTab === 'acciones' && !isAdmin) return;
+      if (currentTab !== 'acciones' && isAdmin) return;
+      if (!isAdmin && record.tipo !== currentTab && record.tipo !== 'completa') return;
+    }
 
-        window.openDetailModal = function(data) {
-            document.getElementById('md-folio').innerText = data.folio || 'INGRESO MANUAL';
-            document.getElementById('md-title').innerText = data.lugar_tramo || data.gestion_titulo || 'Ubicación Georeferenciada';
-            document.getElementById('md-meta').innerText = `Autor: ${data.inspector || 'Administrador Central'} | Registrado: ${data.fecha_captura || '-'} ${data.hora_final || ''}`;
-            
-            // Lógica de Visualización de Cajas
-            const gBox = document.getElementById('md-gestion-box');
-            const aBox = document.getElementById('md-audit-box');
-            let isAccion = data.tipo_inspeccion === 'admin_gestion' || data.tipo_inspeccion === 'acciones' || (data.gestion_titulo && data.gestion_titulo.length > 2);
-            
-            if(isAccion) {
-                document.getElementById('md-badge').innerText = 'PROYECTO / EVENTO'; 
-                document.getElementById('md-badge').className = 'px-3 py-1 rounded-full text-[10px] font-black uppercase bg-amber-500 text-black shadow-inner';
-            } else {
-                document.getElementById('md-badge').innerText = `AUDITORÍA: ${data.tipo_inspeccion || 'COMPLETA'}`; 
-                document.getElementById('md-badge').className = 'px-3 py-1 rounded-full text-[10px] font-black uppercase bg-blue-600 shadow-inner';
-            }
+    // Sub-filtros de indicador
+    if (!isAdmin && currentTab !== 'all' && currentTab !== 'acciones' && activeSubFilters.size > 0) {
+      const match = [...activeSubFilters].some(idx => {
+        const v = record[`${currentTab}_v_${idx}`];
+        return v === 'M' || v === 'R';
+      });
+      if (!match) return;
+    }
 
-            // --- AGENDA DE PROYECTO ---
-            if (isAccion) {
-                gBox.classList.remove('hidden');
-                document.getElementById('md-g-tipo').innerText = data.gestion_tipo || 'Registro de Campo';
-                document.getElementById('md-g-titulo').innerText = data.gestion_titulo || '-';
-                document.getElementById('md-g-desc').innerText = data.gestion_desc || '-';
-                document.getElementById('md-g-fecha').innerText = data.gestion_fecha || 'Sin definir';
-                document.getElementById('md-g-hora').innerText = data.gestion_hora || '--:--';
-                document.getElementById('md-g-wa').innerText = data.gestion_wa || 'No registrado';
-                document.getElementById('md-g-auths').innerText = (data.gestion_auths && data.gestion_auths.length > 0) ? data.gestion_auths.join(" • ") : 'Ninguna seleccionada.';
-            } else { gBox.classList.add('hidden'); }
+    const grav = isAdmin ? { score:0, r:{M:[],R:[],B:[],NE:[]}, auths:[] } : calcGravity(record, currentTab);
+    record._grav = grav;
 
-            // --- RESULTADOS DE AUDITORÍA (Basado en la pestaña actual) ---
-            if (!isAccion) {
-                aBox.classList.remove('hidden');
-                const gInfo = data._gravedad_local || calculateLocalGravity(data, currentTab);
-                
-                // Gravedad UI
-                const gravBox = document.getElementById('md-gravity-box');
-                gravBox.classList.remove('hidden');
-                document.getElementById('md-grav-title').innerText = currentTab === 'all' ? 'Prioridad Global' : 'Prioridad Local';
-                const gScore = document.getElementById('md-gravity-score');
-                gScore.innerText = gInfo.score;
-                let hThresh = currentTab === 'all' ? 12 : 6;
-                let mThresh = currentTab === 'all' ? 4 : 2;
-                if(gInfo.score >= hThresh) gScore.className = 'text-3xl font-black text-red-500';
-                else if(gInfo.score >= mThresh) gScore.className = 'text-3xl font-black text-amber-500';
-                else gScore.className = 'text-3xl font-black text-green-500';
+    // Crear marcador
+    let html, size = 26;
+    if (isAdmin) {
+      size = 32;
+      html = `<div class="m-admin" style="width:${size}px;height:${size}px;">⭐</div>`;
+    } else {
+      const hThresh = currentTab === 'all' ? 12 : 6;
+      const mThresh = currentTab === 'all' ? 4  : 2;
+      let cls = 'sev-low';
+      if      (grav.score >= hThresh) { cls = 'sev-high'; size = currentTab==='all'?44:38; }
+      else if (grav.score >= mThresh) { cls = 'sev-med';  size = currentTab==='all'?34:30; }
+      html = `<div class="sev-marker ${cls}" style="width:${size}px;height:${size}px;font-size:${Math.round(size*.38)}px;">${grav.score}</div>`;
+    }
 
-                // Lista de Fallos Específicos
-                const listEl = document.getElementById('md-indicadores-list');
-                listEl.innerHTML = '';
-                let htmlList = '';
-                const r = gInfo.resultados;
+    const marker = L.marker([lat, lng], {
+      icon: L.divIcon({ className:'', html, iconSize:[size,size], iconAnchor:[size/2,size/2] })
+    }).addTo(map);
 
-                if(r.M.length > 0) {
-                    htmlList += `<div class="mb-3"><h4 class="text-[10px] font-black uppercase text-red-600 mb-1 border-b border-red-200">🔴 Malo / Crítico (3 pts)</h4>`;
-                    r.M.forEach(f => htmlList += `<div class="text-[11px] font-bold text-slate-700 py-1 flex justify-between bg-red-50 px-2 rounded mb-1"><span>${f.item}</span><span class="text-[8px] uppercase opacity-50 truncate ml-2">${f.sec}</span></div>`);
-                    htmlList += `</div>`;
-                }
-                if(r.R.length > 0) {
-                    htmlList += `<div class="mb-3"><h4 class="text-[10px] font-black uppercase text-amber-600 mb-1 border-b border-amber-200">🟡 Regular / Preventivo (1 pt)</h4>`;
-                    r.R.forEach(f => htmlList += `<div class="text-[11px] font-bold text-slate-700 py-1 flex justify-between bg-amber-50 px-2 rounded mb-1"><span>${f.item}</span><span class="text-[8px] uppercase opacity-50 truncate ml-2">${f.sec}</span></div>`);
-                    htmlList += `</div>`;
-                }
-                if(r.B.length > 0) {
-                    htmlList += `<div class="mb-3"><h4 class="text-[10px] font-black uppercase text-green-600 mb-1 border-b border-green-200">🟢 Bueno / Óptimo (0 pts)</h4>`;
-                    r.B.forEach(f => htmlList += `<div class="text-[11px] font-bold text-slate-700 py-1 flex justify-between bg-green-50 px-2 rounded mb-1"><span>${f.item}</span><span class="text-[8px] uppercase opacity-50 truncate ml-2">${f.sec}</span></div>`);
-                    htmlList += `</div>`;
-                }
-                if(r.NE.length > 0) {
-                    htmlList += `<div class="mb-3"><h4 class="text-[10px] font-black uppercase text-slate-400 mb-1 border-b border-slate-200">⚪ N/E / No Aplica (0 pts)</h4>`;
-                    r.NE.forEach(f => htmlList += `<div class="text-[11px] font-bold text-slate-500 py-1 flex justify-between bg-slate-100 px-2 rounded mb-1"><span>${f.item}</span><span class="text-[8px] uppercase opacity-50 truncate ml-2">${f.sec}</span></div>`);
-                    htmlList += `</div>`;
-                }
-                
-                if(htmlList === '') htmlList = '<p class="text-xs font-bold text-slate-500 text-center">Sin indicadores evaluados en este bloque.</p>';
-                listEl.innerHTML = htmlList;
+    // Tooltip
+    const tipTitle = isAdmin ? `⭐ ${record.gestion_titulo||'Proyecto'}` : (record.lugar_tramo || 'Punto auditado');
+    let tipBody = `<strong style="font-size:11px;text-transform:uppercase;border-bottom:1px solid #334155;display:block;padding-bottom:6px;margin-bottom:6px;">${tipTitle}</strong>`;
+    if (isAdmin) {
+      tipBody += `<span style="font-size:10px;color:#fbbf24;">📅 ${record.gestion_fecha||'Sin agendar'}</span>`;
+    } else {
+      const top = [...grav.r.M.slice(0,2), ...grav.r.R.slice(0,1)];
+      if (top.length > 0) {
+        top.forEach(f => { tipBody += `<div style="font-size:10px;margin:2px 0;">${grav.r.M.includes(f)?'🔴':'🟡'} ${f.item}</div>`; });
+        const more = grav.r.M.length + grav.r.R.length - top.length;
+        if (more > 0) tipBody += `<div style="font-size:9px;color:#94a3b8;margin-top:3px;">+${more} más…</div>`;
+      } else {
+        tipBody += `<span style="font-size:10px;color:#4ade80;">✅ Zona Estable</span>`;
+      }
+    }
+    tipBody += `<div style="font-size:9px;color:#475569;margin-top:5px;font-family:monospace;">${record.inspector||'Admin'} · ${record.fecha_captura||''}</div>`;
 
-                // Autocompletar Autoridades Recomendadas
-                const authEl = document.getElementById('md-rec-auths');
-                authEl.innerHTML = '';
-                if(gInfo.autoridades.length > 0) gInfo.autoridades.forEach(a => authEl.innerHTML += `<li>${a}</li>`);
-                else authEl.innerHTML = '<li class="text-slate-500 font-normal">No requiere intervención prioritaria.</li>';
+    marker.bindTooltip(tipBody, { direction:'top', offset:[0,-10], className:'ctip' });
+    marker.on('click', () => openDetailModal(record));
+    mapMarkers.push(marker);
+  });
+}
 
-                document.getElementById('md-probs').innerText = data.problemas || "Sin comentarios.";
-                document.getElementById('md-props').innerText = data.oportunidades || "Sin comentarios.";
-            } else {
-                aBox.classList.add('hidden');
-                document.getElementById('md-gravity-box').classList.add('hidden');
-            }
+function centerOn(lat, lng) {
+  map.setView([lat, lng], 17, { animate:true });
+}
 
-            // --- FOTOS COMPARTIDAS ---
-            const galeriaGrid = document.getElementById('md-fotos-grid');
-            const gFotosBox = document.getElementById('md-g-fotos');
-            galeriaGrid.innerHTML = ''; gFotosBox.innerHTML = '';
-            
-            if (data.fotos_georeferenciadas) {
-                Object.keys(data.fotos_georeferenciadas).forEach(key => {
-                    const imgData = data.fotos_georeferenciadas[key].data;
-                    const imgEl = `<img src="${imgData}" class="w-full h-48 object-cover rounded-2xl shadow-sm border-2 border-slate-200 cursor-pointer hover:opacity-80 transition" onclick="window.open('${imgData}')">`;
-                    if(key.includes('gestion')) gFotosBox.innerHTML += imgEl;
-                    else galeriaGrid.innerHTML += imgEl;
-                });
-            } else {
-                const noImgHtml = '<p class="text-xs font-bold text-slate-400 bg-slate-100 p-6 rounded-2xl col-span-full text-center border-2 border-dashed border-slate-300">🚫 Sin fotografías vinculadas.</p>';
-                galeriaGrid.innerHTML = noImgHtml; gFotosBox.innerHTML = noImgHtml;
-            }
+/* ═══════════════════════════════════════════
+   MODAL DE DETALLE
+   Jerarquía: Identidad → Fotos → Indicadores → Conclusiones
+═══════════════════════════════════════════ */
+function openDetailModal(data) {
+  const isAdmin = isAdminRecord(data);
+  const grav    = isAdmin ? { score:0, r:{M:[],R:[],B:[],NE:[]}, auths:[] }
+                          : (data._grav || calcGravity(data, currentTab));
 
-            document.getElementById('detailModal').classList.remove('hidden');
-        }
+  // ── Header ──
+  document.getElementById('md-folio').textContent = data.folio || 'SIN FOLIO';
+  document.getElementById('md-title').textContent = data.lugar_tramo || data.gestion_titulo || 'Ubicación Georeferenciada';
 
-        // --- SISTEMA MANUAL DE EVENTOS ---
-        window.toggleAddMode = function() {
-            isAddMode = !isAddMode;
-            const btn = document.getElementById('btn-add-action');
-            const hint = document.getElementById('add-hint');
-            const mapEl = document.getElementById('map');
-            
-            if (isAddMode) {
-                btn.innerHTML = '❌ CANCELAR MODO AGENDA';
-                btn.classList.replace('bg-amber-500', 'bg-red-500');
-                btn.classList.replace('hover:bg-amber-400', 'hover:bg-red-400');
-                btn.classList.replace('text-black', 'text-white');
-                hint.classList.remove('hidden');
-                mapEl.classList.add('crosshair-cursor-map');
-            } else {
-                btn.innerHTML = '<span>➕ AGENDAR PROYECTO / EVENTO</span>';
-                btn.classList.replace('bg-red-500', 'bg-amber-500');
-                btn.classList.replace('hover:bg-red-400', 'hover:bg-amber-400');
-                btn.classList.replace('text-white', 'text-black');
-                hint.classList.add('hidden');
-                mapEl.classList.remove('crosshair-cursor-map');
-            }
-        }
+  // Identidad del hallazgo: inspector + fecha + hora
+  const ts = data.timestamp_utc ? new Date(data.timestamp_utc) : null;
+  const horaStr = ts ? ts.toLocaleTimeString('es-MX', { hour:'2-digit', minute:'2-digit' }) : '';
+  document.getElementById('md-meta').textContent =
+    `👤 ${data.inspector||'Administración CERT'}  ·  📅 ${data.fecha_captura||'-'}${horaStr?' · ⏰ '+horaStr:''}`;
+  document.getElementById('md-gps').textContent =
+    data.gps_coords ? `📍 ${data.gps_coords}` : (data.lat ? `📍 ${data.lat}, ${data.lng}` : '');
 
-        map.on('click', function(e) {
-            if (!isAddMode) return;
-            tempCoords = e.latlng;
-            document.getElementById('create-coords').innerText = `${tempCoords.lat.toFixed(6)}, ${tempCoords.lng.toFixed(6)}`;
-            document.getElementById('form-nuevo-evento').reset();
-            document.getElementById('c-foto-preview').classList.add('hidden');
-            adminTempPhotoData = null;
-            document.getElementById('createModal').classList.remove('hidden');
-            toggleAddMode(); 
-        });
+  // Badge tipo
+  const badgeEl = document.getElementById('md-badge');
+  badgeEl.textContent = isAdmin
+    ? 'PROYECTO / EVENTO'
+    : `AUDITORÍA · ${(data.tipo||data.tipo_inspeccion||'INTEGRAL').toUpperCase()}`;
+  badgeEl.style.background = isAdmin ? '#d97706' : '#2563eb';
+  badgeEl.style.color      = isAdmin ? '#000'    : '#bfdbfe';
 
-        window.closeModal = function(id) { document.getElementById(id).classList.add('hidden'); }
+  // Badge gravedad
+  const gravBadge = document.getElementById('md-gravity-badge');
+  if (!isAdmin) {
+    const hThr = currentTab==='all'?12:6, mThr = currentTab==='all'?4:2;
+    let bg='#166534', col='#86efac', label='Estable';
+    if      (grav.score >= hThr) { bg='#7f1d1d'; col='#fca5a5'; label='🔴 URGENTE'; }
+    else if (grav.score >= mThr) { bg='#78350f'; col='#fde68a'; label='🟡 PREVENTIVO'; }
+    else                         { label='🟢 ESTABLE'; }
+    gravBadge.textContent  = `Score ${grav.score} · ${label}`;
+    gravBadge.style.cssText= `background:${bg};color:${col};font-family:var(--mono);font-size:10px;font-weight:700;padding:3px 14px;border-radius:99px;display:inline-block;letter-spacing:.05em;`;
+  } else {
+    gravBadge.style.display = 'none';
+  }
 
-        window.previewAdminPhoto = function(input) {
-            if (input.files && input.files[0]) {
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    const img = new Image();
-                    img.src = e.target.result;
-                    img.onload = () => {
-                        const canvas = document.createElement('canvas');
-                        const ctx = canvas.getContext('2d');
-                        let w = img.width, h = img.height;
-                        if(w > 700) { h = Math.round((h * 700)/w); w = 700; }
-                        canvas.width = w; canvas.height = h;
-                        ctx.drawImage(img, 0, 0, w, h);
-                        adminTempPhotoData = canvas.toDataURL('image/jpeg', 0.6);
-                        document.getElementById('c-foto-preview').src = adminTempPhotoData;
-                        document.getElementById('c-foto-preview').classList.remove('hidden');
-                    };
-                };
-                reader.readAsDataURL(input.files[0]);
-            }
-        }
+  // ── Body ──
+  const body = document.getElementById('md-body');
 
-        window.saveAdminEvent = async function() {
-            const titulo = document.getElementById('c-titulo').value.trim();
-            if (!titulo) { alert("🚨 El título es obligatorio."); return; }
-            
-            const auths = [];
-            document.querySelectorAll('#c-autoridades-checkboxes input[type="checkbox"]:checked').forEach(cb => auths.push(cb.value));
+  if (isAdmin) {
+    // Proyecto / Evento
+    body.innerHTML = `
+      <div class="detail-sec" style="background:#fffbeb;border-color:#fde68a;margin-bottom:14px;">
+        <div class="detail-sec-title" style="color:#92400e;">⭐ Ficha del Proyecto</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;font-size:13px;">
+          ${field('Tipo',        data.gestion_tipo||'-',            '#92400e')}
+          ${field('Título',      data.gestion_titulo||'-',          '#92400e')}
+          ${field('📅 Fecha',    data.gestion_fecha||'Sin definir', '#92400e')}
+          ${field('⏰ Hora',     data.gestion_hora||'--:--',        '#92400e')}
+          ${field('📱 WhatsApp', data.gestion_wa||'No registrado',  '#2563eb')}
+          ${field('Dependencias',(data.gestion_auths&&data.gestion_auths.length)?data.gestion_auths.join(' · '):'Ninguna','#991b1b')}
+        </div>
+        ${data.gestion_desc?`<div style="margin-top:12px;font-size:13px;color:#374151;background:#fff;padding:12px;border-radius:8px;border:1px solid #fde68a;line-height:1.7;">${data.gestion_desc}</div>`:''}
+      </div>
+      ${buildFotoSection(data)}`;
 
-            const btn = document.getElementById('btn-save-admin');
-            btn.innerText = "⏳ GEOPROCESANDO..."; btn.disabled = true;
+  } else {
+    // Auditoría – fotos PRIMERO, luego indicadores y conclusiones
+    const fotosHtml = buildFotoSection(data);
 
-            const now = new Date();
-            const record = {
-                tipo_inspeccion: 'admin_gestion',
-                lugar_tramo: titulo, 
-                gestion_tipo: document.getElementById('c-tipo').value,
-                gestion_titulo: titulo,
-                gestion_desc: document.getElementById('c-desc').value,
-                gestion_fecha: document.getElementById('c-fecha').value,
-                gestion_hora: document.getElementById('c-hora').value,
-                gestion_wa: document.getElementById('c-wa').value,
-                gestion_auths: auths,
-                lat: tempCoords.lat,
-                lng: tempCoords.lng,
-                fecha_captura: now.toLocaleDateString('es-MX'),
-                hora_final: now.toLocaleTimeString('es-MX'),
-                inspector: 'Administración CERT',
-                timestamp_utc: now.toISOString()
-            };
+    // Indicadores agrupados
+    let critHtml = '', prevHtml = '', okHtml = '';
+    grav.r.M.forEach(f => { critHtml += indRow(f.item, f.sec, 'M'); });
+    grav.r.R.forEach(f => { prevHtml += indRow(f.item, f.sec, 'R'); });
+    grav.r.B.forEach(f => { okHtml   += indRow(f.item, f.sec, 'B'); });
 
-            if (adminTempPhotoData) record.fotos_georeferenciadas = { gestion_admin: { data: adminTempPhotoData, lat: tempCoords.lat, lng: tempCoords.lng } };
+    const indHtml = [
+      critHtml ? `<div style="font-family:var(--mono);font-size:9px;font-weight:700;color:#991b1b;text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px;margin-top:4px;">🔴 Crítico (${grav.r.M.length})</div>${critHtml}` : '',
+      prevHtml ? `<div style="font-family:var(--mono);font-size:9px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px;margin-top:10px;">🟡 Preventivo (${grav.r.R.length})</div>${prevHtml}` : '',
+      okHtml   ? `<div style="font-family:var(--mono);font-size:9px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px;margin-top:10px;">🟢 Bueno (${grav.r.B.length})</div>${okHtml}` : '',
+    ].filter(Boolean).join('') || '<p style="font-size:12px;color:#94a3b8;text-align:center;padding:16px;">Sin indicadores evaluados.</p>';
 
-            try {
-                if(window.certDB) {
-                    await window.certDB.addDoc(window.certDB.collection(window.certDB.db, 'cert_registros'), record);
-                    closeModal('createModal');
-                }
-            } catch (error) { alert("Error al guardar."); }
-            
-            btn.innerText = "✅ PUBLICAR EN MAPA"; btn.disabled = false;
-        }
+    body.innerHTML = `
+      ${fotosHtml}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px;">
+        <div class="detail-sec" style="grid-column:1/-1;">
+          <div class="detail-sec-title">📊 Indicadores Evaluados</div>
+          <div style="max-height:260px;overflow-y:auto;padding-right:4px;" class="noscroll">${indHtml}</div>
+          ${grav.auths.length?`
+            <div style="background:#eff6ff;border-radius:10px;padding:10px 14px;margin-top:12px;border:1px solid #bfdbfe;">
+              <div style="font-family:var(--mono);font-size:9px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px;">Dependencias Recomendadas</div>
+              <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                ${grav.auths.map(a=>`<span style="background:#dbeafe;color:#1e40af;font-size:11px;font-weight:600;padding:3px 10px;border-radius:99px;">${a}</span>`).join('')}
+              </div>
+            </div>`:''}
+        </div>
+        <div class="detail-sec">
+          <div class="detail-sec-title" style="color:#dc2626;">🔴 Problemáticas</div>
+          <div style="font-size:13px;color:#374151;line-height:1.7;">${data.problemas||'<span style="color:#94a3b8;">Sin comentarios registrados.</span>'}</div>
+        </div>
+        <div class="detail-sec">
+          <div class="detail-sec-title" style="color:#16a34a;">🟢 Propuestas</div>
+          <div style="font-size:13px;color:#374151;line-height:1.7;">${data.oportunidades||'<span style="color:#94a3b8;">Sin propuestas registradas.</span>'}</div>
+        </div>
+      </div>`;
+  }
 
-    </script>
+  document.getElementById('detailModal').classList.add('open');
+}
+
+/* ── Helpers ── */
+function field(label, value, color='#64748b') {
+  return `<div>
+    <div style="font-size:10px;font-weight:700;color:${color};text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px;">${label}</div>
+    <div style="font-size:13px;font-weight:600;color:#0f172a;">${value}</div>
+  </div>`;
+}
+function indRow(item, sec, level) {
+  const bg = level==='M'?'#fff5f5':level==='R'?'#fffbeb':'#f0fdf4';
+  const col= level==='M'?'#991b1b':level==='R'?'#92400e':'#166534';
+  return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;border-radius:8px;background:${bg};margin-bottom:4px;">
+    <span style="font-size:12px;font-weight:600;color:${col};">${item}</span>
+    <span style="font-size:9px;color:${col};opacity:.6;font-family:var(--mono);white-space:nowrap;margin-left:8px;">${sec}</span>
+  </div>`;
+}
+
+/* ── Sección de fotos: URL (3.0) con fallback a base64 (legacy) ──
+   Muestra: foto grande, GPS del momento exacto, timestamp, zona del registro ── */
+function buildFotoSection(record) {
+  const src = record.fotos || record.fotos_georeferenciadas || {};
+  const entries = Object.entries(src);
+
+  if (!entries.length) {
+    return `<div class="detail-sec">
+      <div class="detail-sec-title">📸 Evidencia Fotográfica</div>
+      <div style="border:2px dashed #e2e8f0;border-radius:10px;padding:20px;text-align:center;font-size:12px;color:#94a3b8;">Sin fotografías vinculadas a este registro.</div>
+    </div>`;
+  }
+
+  const cards = entries.map(([key, foto]) => {
+    const imgSrc = foto.url || foto.data || '';
+    const lat    = foto.lat  ? parseFloat(foto.lat).toFixed(5)  : null;
+    const lng    = foto.lng  ? parseFloat(foto.lng).toFixed(5)  : null;
+    const tsRaw  = foto.ts   ? new Date(foto.ts) : null;
+    const tsDate = tsRaw ? tsRaw.toLocaleDateString('es-MX') : null;
+    const tsHour = tsRaw ? tsRaw.toLocaleTimeString('es-MX', {hour:'2-digit',minute:'2-digit'}) : null;
+
+    // Etiqueta legible del slot de foto
+    const slotLabel = key
+      .replace(/_/g,' ')
+      .replace(/([a-z])(\d)/g,'$1 $2')
+      .replace(/^(infra|amb|soc|seg|gestion|gps|m)\s?/i, s => ({infra:'Infraest. ',amb:'Ambiente ',soc:'Social ',seg:'Seguridad ',gestion:'Gestión ',gps:'GPS ',m:'Marcha '}[s.toLowerCase()]||s))
+      .trim();
+
+    return `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+      <div style="position:relative;cursor:zoom-in;" onclick="openFotoViewer('${imgSrc}','${slotLabel}','${lat||''}','${lng||''}','${tsDate||''}','${tsHour||''}','${record.inspector||''}','${record.fecha_captura||''}')">
+        <img src="${imgSrc}" style="width:100%;height:160px;object-fit:cover;display:block;">
+        <div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,rgba(0,0,0,.7));padding:8px 10px;">
+          <div style="font-family:var(--mono);font-size:9px;font-weight:700;color:#fff;text-transform:uppercase;">${slotLabel}</div>
+        </div>
+        <div style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,.6);border-radius:6px;padding:2px 6px;font-family:var(--mono);font-size:8px;color:#fff;">🔍 ver</div>
+      </div>
+      <div style="padding:8px 10px;background:#f8fafc;">
+        ${lat?`<div style="font-family:var(--mono);font-size:9px;color:#2563eb;margin-bottom:2px;">📍 ${lat}, ${lng}</div>`:'<div style="font-size:9px;color:#94a3b8;margin-bottom:2px;">📍 Sin GPS</div>'}
+        ${tsDate?`<div style="font-family:var(--mono);font-size:9px;color:#64748b;">📅 ${tsDate} · ⏰ ${tsHour}</div>`:''}
+      </div>
+    </div>`;
+  }).join('');
+
+  return `<div class="detail-sec">
+    <div class="detail-sec-title">📸 Evidencia Fotográfica · ${entries.length} foto${entries.length!==1?'s':''} georeferenciada${entries.length!==1?'s':''}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;">${cards}</div>
+  </div>`;
+}
+
+/* ── Visor de foto a pantalla completa con metadata ── */
+function openFotoViewer(src, slot, lat, lng, fecha, hora, inspector, fechaReg) {
+  const existing = document.getElementById('foto-viewer');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'foto-viewer';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.95);z-index:9000;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;';
+  overlay.onclick = () => overlay.remove();
+
+  overlay.innerHTML = `
+    <button onclick="document.getElementById('foto-viewer').remove()" style="position:absolute;top:16px;right:16px;background:rgba(255,255,255,.12);border:none;border-radius:50%;width:38px;height:38px;color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;">✕</button>
+    <img src="${src}" style="max-width:100%;max-height:75dvh;object-fit:contain;border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,.8);" onclick="event.stopPropagation()">
+    <div style="margin-top:14px;display:flex;flex-wrap:wrap;gap:8px;justify-content:center;">
+      ${slot?`<span style="background:#1e293b;color:#94a3b8;font-family:monospace;font-size:10px;font-weight:700;padding:5px 12px;border-radius:99px;text-transform:uppercase;">${slot}</span>`:''}
+      ${fecha?`<span style="background:#1e293b;color:#60a5fa;font-family:monospace;font-size:10px;font-weight:700;padding:5px 12px;border-radius:99px;">📅 ${fecha} · ⏰ ${hora}</span>`:''}
+      ${lat?`<span style="background:#1e293b;color:#34d399;font-family:monospace;font-size:10px;font-weight:700;padding:5px 12px;border-radius:99px;">📍 ${lat}, ${lng}</span>`:''}
+      ${inspector?`<span style="background:#1e293b;color:#a78bfa;font-family:monospace;font-size:10px;font-weight:700;padding:5px 12px;border-radius:99px;">👤 ${inspector}</span>`:''}
+      ${fechaReg&&fechaReg!==fecha?`<span style="background:#1e293b;color:#94a3b8;font-family:monospace;font-size:10px;font-weight:700;padding:5px 12px;border-radius:99px;">Registro: ${fechaReg}</span>`:''}
+    </div>
+    <a href="${src}" target="_blank" onclick="event.stopPropagation()" style="margin-top:10px;font-family:monospace;font-size:10px;color:#64748b;text-decoration:none;">↗ Abrir en nueva pestaña</a>`;
+
+  document.body.appendChild(overlay);
+}
+
+/* ═══════════════════════════════════════════
+   MODO AGENDA – click en mapa
+═══════════════════════════════════════════ */
+function toggleAddMode() {
+  isAddMode = !isAddMode;
+  const btn  = document.getElementById('btn-add-action');
+  const hint = document.getElementById('add-hint');
+  const mapEl = document.getElementById('map');
+  if (isAddMode) {
+    btn.textContent = '❌ Cancelar Modo Agenda';
+    btn.className   = 'add-btn active-mode';
+    hint.style.display = 'block';
+    mapEl.classList.add('crosshair');
+  } else {
+    btn.textContent = '➕ Agendar Proyecto / Evento';
+    btn.className   = 'add-btn idle';
+    hint.style.display = 'none';
+    mapEl.classList.remove('crosshair');
+  }
+}
+
+map.on('click', function(e) {
+  if (!isAddMode) return;
+  tempCoords = e.latlng;
+  document.getElementById('create-coords').textContent = `${tempCoords.lat.toFixed(6)}, ${tempCoords.lng.toFixed(6)}`;
+  document.getElementById('form-evento').reset();
+  document.getElementById('c-foto-preview').style.display = 'none';
+  adminPhotoB64 = null;
+  toggleAddMode();
+  document.getElementById('createModal').classList.add('open');
+});
+
+/* ═══════════════════════════════════════════
+   GUARDAR EVENTO ADMIN – con Storage + folio único
+═══════════════════════════════════════════ */
+function previewAdminPhoto(input) {
+  if (!input.files || !input.files[0]) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.src = e.target.result;
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let w = img.width, h = img.height;
+      if (w > 800) { h = Math.round(h*800/w); w = 800; }
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      adminPhotoB64 = canvas.toDataURL('image/jpeg', 0.65);
+      const prev = document.getElementById('c-foto-preview');
+      prev.src = adminPhotoB64;
+      prev.style.display = 'block';
+    };
+  };
+  reader.readAsDataURL(input.files[0]);
+}
+
+async function saveAdminEvent() {
+  const titulo = document.getElementById('c-titulo').value.trim();
+  if (!titulo) { showToast('El título es obligatorio', 'err'); return; }
+  if (!tempCoords) { showToast('Sin coordenadas GPS', 'err'); return; }
+
+  const btn = document.getElementById('btn-save-evento');
+  btn.textContent = '⏳ Guardando…';
+  btn.disabled = true;
+
+  try {
+    const deps = [];
+    document.querySelectorAll('#c-deps input:checked').forEach(cb => deps.push(cb.value));
+
+    const folio = await window.certCloud.reserveFolio('ADM');
+    const now   = new Date();
+
+    let fotosObj = {};
+    if (adminPhotoB64) {
+      try {
+        const url = await window.certCloud.uploadPhoto(adminPhotoB64, `cert_fotos/${folio}/admin_${Date.now()}.jpg`);
+        fotosObj['admin_foto'] = { url, lat: tempCoords.lat, lng: tempCoords.lng, ts: now.toISOString() };
+      } catch(e) {
+        fotosObj['admin_foto'] = { data: adminPhotoB64, lat: tempCoords.lat, lng: tempCoords.lng, ts: now.toISOString(), pendingUpload: true };
+      }
+    }
+
+    const record = {
+      folio,
+      tipo:              'admin_gestion',
+      tipo_inspeccion:   'admin_gestion',
+      inspector:         'Administración CERT',
+      lugar_tramo:       titulo,
+      gestion_tipo:      document.getElementById('c-tipo').value,
+      gestion_titulo:    titulo,
+      gestion_desc:      document.getElementById('c-desc').value,
+      gestion_fecha:     document.getElementById('c-fecha').value,
+      gestion_hora:      document.getElementById('c-hora').value,
+      gestion_wa:        document.getElementById('c-wa').value,
+      gestion_auths:     deps,
+      lat:               tempCoords.lat,
+      lng:               tempCoords.lng,
+      gps_coords:        `${tempCoords.lat.toFixed(6)}, ${tempCoords.lng.toFixed(6)}`,
+      fecha_captura:     now.toLocaleDateString('es-MX'),
+      timestamp_utc:     now.toISOString(),
+      fotos:             fotosObj,
+    };
+
+    await window.certCloud.addDoc(
+      window.certCloud.collection(window.certCloud.db, 'cert_registros'), record
+    );
+
+    closeOverlay('createModal');
+    showToast(`Evento publicado · ${folio}`, 'ok');
+  } catch(e) {
+    console.error(e);
+    showToast('Error al guardar evento', 'err');
+  }
+
+  btn.textContent = '✅ Publicar en Mapa';
+  btn.disabled = false;
+}
+
+/* ═══════════════════════════════════════════
+   EXPORT EXCEL – todos los registros visibles
+═══════════════════════════════════════════ */
+function exportExcel() {
+  const records = getFilteredRecords();
+  if (!records.length) { showToast('Sin registros para exportar', 'warn'); return; }
+  const wb = XLSX.utils.book_new();
+
+  // Hoja 1 – Resumen
+  const resumen = records.map(r => {
+    const g = calcGravity(r, 'all');
+    return {
+      FOLIO: r.folio||'-', FECHA: r.fecha_captura||'-', INSPECTOR: r.inspector||'-',
+      BRIGADA: r.brigada||'-', LUGAR: r.lugar_tramo||'-', TIPO: r.tipo||r.tipo_inspeccion||'-',
+      LAT: r.lat||0, LNG: r.lng||0, SCORE: g.score, CRITICOS: g.r.M.length, REGULARES: g.r.R.length,
+      PROBLEMAS: r.problemas||'-', PROPUESTAS: r.oportunidades||'-',
+    };
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(resumen), 'Resumen');
+
+  // Hoja 2 – Indicadores
+  const det = [];
+  records.filter(r => !isAdminRecord(r)).forEach(r => {
+    SECCIONES.forEach(sec => {
+      sec.items.forEach((item, idx) => {
+        const val = r[`${sec.prefix}_v_${idx}`];
+        if (val) det.push({ FOLIO:r.folio, LUGAR:r.lugar_tramo, SECCION:sec.titulo, INDICADOR:item,
+          EVAL: val==='B'?'Bueno':val==='R'?'Regular':val==='M'?'Malo':'N/E', LAT:r.lat, LNG:r.lng });
+      });
+    });
+  });
+  if (det.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(det), 'Indicadores');
+
+  // Hoja 3 – Fotos
+  const fotos = [];
+  records.forEach(r => {
+    const src = r.fotos || r.fotos_georeferenciadas || {};
+    Object.entries(src).forEach(([k, f]) => {
+      fotos.push({ FOLIO:r.folio, LUGAR:r.lugar_tramo, FOTO_ID:k,
+        URL: f.url||'(base64-local)', LAT_FOTO:f.lat||0, LNG_FOTO:f.lng||0, TIMESTAMP:f.ts||'-' });
+    });
+  });
+  if (fotos.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(fotos), 'Fotos_Georef');
+
+  const today = new Date().toLocaleDateString('es-MX').replace(/\//g,'-');
+  XLSX.writeFile(wb, `CERT_Dashboard_${today}.xlsx`);
+  showToast('Excel descargado ✓', 'ok');
+}
+
+/* ═══════════════════════════════════════════
+   UTILIDADES
+═══════════════════════════════════════════ */
+function closeOverlay(id) {
+  document.getElementById(id).classList.remove('open');
+}
+
+let _toastT;
+function showToast(msg, type='') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className   = 'show ' + type;
+  clearTimeout(_toastT);
+  _toastT = setTimeout(() => el.className='', 2800);
+}
+</script>
 </body>
 </html>
