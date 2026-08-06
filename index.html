@@ -16,9 +16,9 @@
   ═══════════════════════════════════════════ -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getFirestore, collection, doc, addDoc, setDoc, getDoc, getDocs, onSnapshot, runTransaction, increment, enableIndexedDbPersistence, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    import { getFirestore, collection, doc, addDoc, setDoc, updateDoc, deleteDoc, getDoc, getDocs, onSnapshot, runTransaction, increment, enableIndexedDbPersistence, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
     import { getStorage, ref, uploadString, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
-    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyBvDO1Guh6vnVIiOciqqEQ1jZe0Q5zThwM",
@@ -71,20 +71,105 @@
       return bdata;
     }
 
-    window.certCloud = { db, storage, auth, collection, addDoc, getDocs, uploadPhoto, reserveFolio, resolveBrigadista };
+    window.certCloud = { db, storage, auth, collection, doc, addDoc, updateDoc, getDocs, uploadPhoto, reserveFolio, resolveBrigadista, signOut };
     window.currentPhotos = {};
     window.currentLat = 0;
     window.currentLng = 0;
 
-    signInAnonymously(auth).catch(()=>{});
+    /* ── Login con correo/contraseña (cuentas creadas por el admin en Authentication) ── */
+    window.doLogin = async function() {
+      const email = document.getElementById('login-email').value.trim();
+      const pass  = document.getElementById('login-pass').value;
+      const errEl = document.getElementById('login-error');
+      errEl.style.display = 'none';
+      if (!email || !pass) { errEl.textContent = 'Ingresa correo y contraseña.'; errEl.style.display='block'; return; }
+      const btn = document.getElementById('login-btn');
+      btn.disabled = true; btn.textContent = 'Entrando…';
+      try {
+        await signInWithEmailAndPassword(auth, email, pass);
+      } catch (e) {
+        errEl.textContent = 'Correo o contraseña incorrectos.';
+        errEl.style.display = 'block';
+      }
+      btn.disabled = false; btn.textContent = 'Entrar';
+    };
 
-    onAuthStateChanged(auth, user => {
-      if (!user) return;
+    window.doRealLogout = async function() {
+      stopPresence();
+      window.sessionRecords = [];
+      window.editingDocId = null;
+      try { await signOut(auth); } catch(e) {}
+      location.reload();
+    };
+
+    /* ── Presencia: heartbeat + conteo de usuarios activos ── */
+    let presenceTimer = null;
+    let lastPresenceDocs = [];
+    function startPresence(uid, role) {
+      const pRef = doc(db, 'cert_presencia', uid);
+      const beat = () => setDoc(pRef, { rol: role, lastSeen: serverTimestamp() }).catch(()=>{});
+      beat();
+      presenceTimer = setInterval(beat, 25000);
+    }
+    function stopPresence() {
+      if (presenceTimer) { clearInterval(presenceTimer); presenceTimer = null; }
+      if (window.certUID) deleteDoc(doc(db, 'cert_presencia', window.certUID)).catch(()=>{});
+    }
+    function updateActiveCount() {
+      const now = Date.now();
+      const active = lastPresenceDocs.filter(d => {
+        const ts = d.data().lastSeen;
+        return ts && (now - ts.toMillis()) < 70000;
+      }).length;
+      const el = document.getElementById('active-users-count');
+      if (el) el.textContent = active;
+    }
+    setInterval(updateActiveCount, 15000);
+
+    onAuthStateChanged(auth, async user => {
+      const gate = document.getElementById('loginGate');
+      if (!user) {
+        window.certUID = null;
+        window.certRole = null;
+        if (gate) gate.style.display = 'flex';
+        return;
+      }
+      // Verificar que el usuario tenga un rol asignado por el administrador
+      let role = null;
+      try {
+        const roleSnap = await getDoc(doc(db, 'usuarios', user.uid));
+        role = roleSnap.exists() ? roleSnap.data().rol : null;
+      } catch(e) {}
+      if (role !== 'inspector' && role !== 'admin') {
+        const errEl = document.getElementById('login-error');
+        if (errEl) { errEl.textContent = 'Esta cuenta no tiene un rol asignado. Contacta al administrador.'; errEl.style.display = 'block'; }
+        await signOut(auth);
+        return;
+      }
       window.certUID = user.uid;
+      window.certRole = role;
+      if (gate) gate.style.display = 'none';
+
+      startPresence(user.uid, role);
+      onSnapshot(collection(db, 'cert_presencia'), snap => {
+        lastPresenceDocs = snap.docs;
+        updateActiveCount();
+      });
+
       const recordsRef = collection(db, 'cert_registros');
-      onSnapshot(recordsRef, snap => {
+      onSnapshot(recordsRef, { includeMetadataChanges: true }, snap => {
         document.getElementById('sync-counter').textContent = snap.size;
         window.globalRecords = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const pending = snap.docs.filter(d => d.metadata.hasPendingWrites).length;
+        const pill = document.getElementById('pending-pill');
+        if (pill) {
+          if (pending > 0) {
+            pill.style.display = '';
+            document.getElementById('pending-counter').textContent = pending;
+          } else {
+            pill.style.display = 'none';
+          }
+        }
       });
       setConnectionStatus(true);
     });
@@ -121,6 +206,7 @@
     }
     *, *::before, *::after { box-sizing: border-box; margin:0; padding:0; }
     html { font-size: 15px; }
+    html, body { max-width:100%; overflow-x:hidden; }
     body {
       font-family: var(--sans);
       background: var(--bg);
@@ -144,10 +230,17 @@
     }
     .topbar-row1 {
       display: flex; align-items: center; justify-content: space-between;
-      padding: 8px 0;
+      padding: 8px 0; gap:8px;
       border-bottom: 1px solid rgba(255,255,255,0.08);
     }
-    .topbar-left { display:flex; align-items:center; gap:8px; }
+    .topbar-left {
+      display:flex; align-items:center; gap:8px;
+      overflow-x:auto; scrollbar-width:none; -webkit-overflow-scrolling:touch;
+      min-width:0; flex:1 1 auto;
+    }
+    .topbar-left::-webkit-scrollbar { display:none; }
+    .topbar-left .sync-pill, .topbar-left .conn-badge { flex-shrink:0; }
+    .topbar-actions { flex-shrink:0; }
     .topbar-title { font-family: var(--mono); font-size:11px; color:#94a3b8; letter-spacing:.08em; }
     .conn-badge {
       font-family: var(--mono); font-size:9px; font-weight:700;
@@ -160,15 +253,22 @@
       font-family:var(--mono); font-size:9px; color:#94a3b8;
       background: rgba(255,255,255,0.07); padding:3px 8px; border-radius:99px;
     }
+    .sync-pill.pending-pill {
+      background: rgba(217,119,6,.25); color:#fde68a; font-weight:700;
+      animation: blinkPending 1.4s ease infinite;
+    }
+    @keyframes blinkPending { 0%,100% { opacity:1; } 50% { opacity:.55; } }
     .topbar-actions { display:flex; gap:6px; }
     .tb-btn {
+      display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
       background: rgba(255,255,255,0.08);
       border:none; border-radius:10px;
-      padding:6px 10px; cursor:pointer;
-      font-size:11px; font-weight:700; color:#e2e8f0;
-      text-transform:uppercase; letter-spacing:.05em;
+      padding:6px 10px; cursor:pointer; min-width:50px;
+      font-size:8px; font-weight:700; color:#e2e8f0;
+      text-transform:uppercase; letter-spacing:.04em;
       transition: background .15s;
     }
+    .tb-btn .tb-icon { font-size:16px; line-height:1; }
     .tb-btn:hover { background:rgba(255,255,255,0.14); }
     .tb-btn.danger { background:rgba(220,38,38,.25); color:#fca5a5; }
     .tb-btn.save-btn { background:rgba(22,163,74,.25); color:#86efac; }
@@ -496,9 +596,89 @@
     .score-high { background:#fff5f5; color:#dc2626; }
 
     @media print { body { display:none; } }
+
+    /* ══════════════════════════════════════
+       LOGIN GATE
+    ══════════════════════════════════════ */
+    .login-gate {
+      position:fixed; inset:0; z-index:20000;
+      background:var(--ink);
+      display:flex; align-items:center; justify-content:center;
+      padding:16px;
+    }
+    .login-box {
+      background:var(--white); border-radius:20px;
+      padding:32px 26px; max-width:340px; width:100%;
+      border:1px solid var(--line);
+    }
+    .login-box h1 {
+      font-family:var(--mono); font-size:14px; font-weight:700;
+      text-transform:uppercase; letter-spacing:.06em; margin-bottom:4px;
+    }
+    .login-box p { font-size:12px; color:var(--muted); margin-bottom:18px; }
+    .login-box .lbl { margin-top:10px; }
+    .login-btn {
+      width:100%; margin-top:16px; padding:13px;
+      background:var(--ink); color:#e2e8f0; border:none; border-radius:12px;
+      font-family:var(--mono); font-size:10px; font-weight:700;
+      text-transform:uppercase; letter-spacing:.07em; cursor:pointer;
+    }
+    .login-btn:disabled { opacity:.6; cursor:default; }
+
+    /* ══════════════════════════════════════
+       SAVING OVERLAY – bloquea mientras se guarda/envía
+    ══════════════════════════════════════ */
+    .saving-overlay {
+      display:none; position:fixed; inset:0; z-index:15000;
+      background:rgba(10,15,30,.94);
+      align-items:center; justify-content:center; padding:16px;
+    }
+    .saving-overlay.open { display:flex; }
+    .saving-box {
+      background:var(--white); border-radius:20px;
+      padding:34px 28px; max-width:320px; width:100%;
+      text-align:center;
+    }
+    .saving-spinner {
+      width:38px; height:38px; margin:0 auto 18px;
+      border:4px solid #e2e8f0; border-top-color:var(--blue);
+      border-radius:50%; animation:spin .8s linear infinite;
+    }
+    .saving-icon { font-size:34px; margin-bottom:14px; display:none; }
+    .saving-title {
+      font-family:var(--mono); font-size:12px; font-weight:700;
+      text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px;
+    }
+    .saving-msg { font-size:12.5px; color:var(--muted); line-height:1.5; }
+    .saving-box.state-success .saving-title { color:#16a34a; }
+    .saving-box.state-warning .saving-title { color:#d97706; }
   </style>
 </head>
 <body>
+
+<!-- ════ SAVING OVERLAY ═══ -->
+<div id="savingOverlay" class="saving-overlay">
+  <div class="saving-box" id="savingBox">
+    <div class="saving-spinner" id="savingSpinner"></div>
+    <div class="saving-icon" id="savingIcon"></div>
+    <div class="saving-title" id="savingTitle">Guardando registro…</div>
+    <div class="saving-msg" id="savingMsg">Enviando datos a Firebase, no cierres ni cambies de pestaña.</div>
+  </div>
+</div>
+
+<!-- ════ LOGIN GATE ═══ -->
+<div id="loginGate" class="login-gate">
+  <div class="login-box">
+    <h1>CERT Auditoría 3.0</h1>
+    <p>Ingresa con tu cuenta asignada por el administrador.</p>
+    <label class="lbl" for="login-email">Correo</label>
+    <input class="inp" type="email" id="login-email" placeholder="inspector1@cert.org" autocomplete="username">
+    <label class="lbl" for="login-pass">Contraseña</label>
+    <input class="inp" type="password" id="login-pass" placeholder="••••••••" autocomplete="current-password">
+    <div class="err-msg" id="login-error" style="margin-top:8px;"></div>
+    <button type="button" class="login-btn" id="login-btn" onclick="doLogin()">Entrar</button>
+  </div>
+</div>
 
 <!-- ════ PROGRESS BAR ═══ -->
 <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:14%"></div></div>
@@ -508,12 +688,14 @@
   <div class="topbar-row1">
     <div class="topbar-left">
       <span class="conn-badge pending" id="conn-badge">INICIANDO</span>
+      <span class="sync-pill">🟢 <span id="active-users-count">0</span> en línea</span>
       <span class="sync-pill">📁 <span id="sync-counter">0</span> REGS</span>
+      <span class="sync-pill pending-pill" id="pending-pill" style="display:none;">⏳ <span id="pending-counter">0</span> pendiente(s) de enviar</span>
     </div>
     <div class="topbar-actions">
-      <button class="tb-btn save-btn" onclick="openGuardarModal()">💾 Guardar Registro</button>
-      <button class="tb-btn" onclick="openManual()">📖 Guía</button>
-      <button class="tb-btn danger" onclick="openSalirModal()">🚪 Salir</button>
+      <button class="tb-btn save-btn" onclick="openGuardarModal()"><span class="tb-icon">💾</span>Guardar</button>
+      <button class="tb-btn" onclick="openManual()"><span class="tb-icon">📖</span>Guía</button>
+      <button class="tb-btn danger" onclick="openSalirModal()"><span class="tb-icon">🚪</span>Salir</button>
     </div>
   </div>
   <div class="tabs-row" id="tabs-row">
@@ -549,6 +731,14 @@
     <h1 style="font-family:var(--mono); font-size:18px; font-weight:700; letter-spacing:-.01em; margin-top:4px;">CERT AUDITORÍA 3.0</h1>
     <div class="folio-badge" id="folio-display">FOLIO PENDIENTE</div>
   </header>
+
+  <div id="sessionRecordsBox" style="display:none; max-width:900px; margin:0 auto 14px; padding:0 12px;">
+    <div class="card">
+      <div class="card-header header-amber">📋 Registros guardados en esta sesión</div>
+      <div class="card-body" id="sessionRecordsList" style="display:flex; flex-direction:column; gap:8px;"></div>
+      <div style="padding:0 18px 12px; font-size:11px; color:var(--muted);">Solo puedes editar estos registros mientras no cierres sesión ni la pestaña. Al volver a entrar, esta lista empieza vacía — se asume que es una inspección nueva.</div>
+    </div>
+  </div>
 
   <form id="certForm" novalidate>
     <input type="hidden" id="h-folio" name="folio">
@@ -725,13 +915,18 @@
     <div id="guardar-summary" style="background:#f8fafc; border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:18px; font-size:13px; line-height:1.8; color:var(--ink);">
     </div>
 
-    <p style="font-size:12px; color:var(--muted); line-height:1.6; margin-bottom:20px; padding:10px 12px; background:#fffbeb; border-radius:10px; border:1px solid #fde68a;">
+    <p style="font-size:12px; color:var(--muted); line-height:1.6; margin-bottom:14px; padding:10px 12px; background:#fffbeb; border-radius:10px; border:1px solid #fde68a;">
       Al confirmar, <strong>todos los datos ingresados y las fotos se subirán a Firebase</strong>.
       El formulario se reiniciará para que puedas iniciar un nuevo registro del mismo día
       conservando tu nombre e ID de inspector.
     </p>
 
-    <button class="modal-btn primary" id="btn-confirm-guardar" onclick="handleGuardar()">
+    <label style="display:flex; align-items:flex-start; gap:10px; font-size:12.5px; color:var(--ink); font-weight:600; margin-bottom:18px; cursor:pointer; padding:10px 12px; background:#f8fafc; border-radius:10px; border:1px solid var(--line);">
+      <input type="checkbox" id="confirm-datos-ok" onchange="toggleConfirmBtn(this.checked)" style="margin-top:2px; width:16px; height:16px; accent-color:#16a34a; flex-shrink:0;">
+      Confirmo que revisé el resumen y los datos que ingresé son correctos.
+    </label>
+
+    <button class="modal-btn primary" id="btn-confirm-guardar" onclick="handleGuardar()" disabled style="opacity:.5;">
       ✅ Confirmar y Subir Registro
     </button>
     <button class="modal-btn ghost" onclick="closeGuardarModal()">Cancelar – seguir editando</button>
@@ -1133,9 +1328,9 @@ function openGuardarModal() {
       <span style="color:var(--muted); font-size:12px;">Folio</span>
       <span style="font-family:var(--mono); font-weight:700; font-size:12px;">${folio}</span>
       <span style="color:var(--muted); font-size:12px;">Inspector</span>
-      <span style="font-weight:600;">${inspector}</span>
+      <span style="font-weight:600;">${esc(inspector)}</span>
       <span style="color:var(--muted); font-size:12px;">Lugar / Tramo</span>
-      <span style="font-weight:600;">${lugar}</span>
+      <span style="font-weight:600;">${esc(lugar)}</span>
       <span style="color:var(--muted); font-size:12px;">Tipo</span>
       <span style="font-weight:600;">${tipoLabel}</span>
       <span style="color:var(--muted); font-size:12px;">GPS</span>
@@ -1146,19 +1341,133 @@ function openGuardarModal() {
       <span style="font-weight:600;">${nEvals} indicador${nEvals!==1?'es':''} marcado${nEvals!==1?'s':''}</span>
     </div>`;
 
+  // Reiniciar la casilla de confirmación cada vez que se abre el modal
+  document.getElementById('confirm-datos-ok').checked = false;
+  toggleConfirmBtn(false);
+
   document.getElementById('guardarModal').classList.add('open');
+}
+
+function toggleConfirmBtn(checked) {
+  const btn = document.getElementById('btn-confirm-guardar');
+  btn.disabled = !checked;
+  btn.style.opacity = checked ? '1' : '.5';
 }
 
 function closeGuardarModal() {
   document.getElementById('guardarModal').classList.remove('open');
 }
 
+/* ── Overlay bloqueante de guardado/envío ── */
+function showSavingOverlay() {
+  const box = document.getElementById('savingBox');
+  box.className = 'saving-box';
+  document.getElementById('savingSpinner').style.display = 'block';
+  document.getElementById('savingIcon').style.display = 'none';
+  document.getElementById('savingTitle').textContent = 'Guardando registro…';
+  document.getElementById('savingMsg').textContent = 'Enviando datos a Firebase, no cierres ni cambies de pestaña.';
+  document.getElementById('savingOverlay').classList.add('open');
+}
+function setSavingOverlayResult(state, icon, title, msg) {
+  const box = document.getElementById('savingBox');
+  box.className = 'saving-box state-' + state;
+  document.getElementById('savingSpinner').style.display = 'none';
+  const iconEl = document.getElementById('savingIcon');
+  iconEl.textContent = icon;
+  iconEl.style.display = 'block';
+  document.getElementById('savingTitle').textContent = title;
+  document.getElementById('savingMsg').textContent = msg;
+}
+function hideSavingOverlay() {
+  document.getElementById('savingOverlay').classList.remove('open');
+}
+
+/* ─────────────────────────────────────────
+   REGISTROS DE LA SESIÓN (editables solo mientras no cierres sesión)
+───────────────────────────────────────── */
+window.sessionRecords = [];   // { id, folio, lugar_tramo, record }
+window.editingDocId = null;
+
+function renderSessionRecordsList() {
+  const box  = document.getElementById('sessionRecordsBox');
+  const list = document.getElementById('sessionRecordsList');
+  if (!window.sessionRecords.length) { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  list.innerHTML = window.sessionRecords.map(r => `
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 10px; background:#f8fafc; border:1px solid var(--line); border-radius:10px;">
+      <div style="min-width:0;">
+        <div style="font-family:var(--mono); font-size:11px; font-weight:700;">${esc(r.folio)}</div>
+        <div style="font-size:12px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(r.record.lugar_tramo || '')}</div>
+      </div>
+      <button type="button" class="tb-btn" style="background:#1e293b; color:#e2e8f0; flex-shrink:0;" onclick="editSessionRecord('${r.id}')">✏️ Editar</button>
+    </div>`).join('');
+}
+
+function editSessionRecord(id) {
+  const entry = window.sessionRecords.find(r => r.id === id);
+  if (!entry) return;
+  const r = entry.record;
+  window.editingDocId = id;
+
+  document.getElementById('inspectorName').value = r.inspector || '';
+  document.getElementById('targetFolder').value  = r.lugar_tramo || '';
+  document.getElementById('equipoName').value     = r.brigada || '';
+  document.getElementById('tipoInspeccion').value = r.tipo || 'completa';
+  applyAuditType();
+
+  document.getElementById('h-folio').value = r.folio;
+  const fd = document.getElementById('folio-display');
+  fd.textContent = r.folio;
+  fd.className = 'folio-badge valid';
+
+  window.currentLat = r.lat || 0;
+  window.currentLng = r.lng || 0;
+  document.getElementById('displayCoords').value = r.gps_coords || '';
+  document.getElementById('gps-text').textContent = r.gps_coords || 'Esperando satélite…';
+  if (r.lat) { document.getElementById('btnGPS').textContent = '📍 GPS Fijado'; document.getElementById('btnGPS').classList.add('locked'); }
+
+  // Indicadores por sección
+  SECCIONES.forEach(sec => {
+    sec.items.forEach((_, i) => {
+      const val = r[`${sec.prefix}_v_${i}`];
+      if (val) {
+        const input = document.querySelector(`input[name="${sec.prefix}_v_${i}"][value="${val}"]`);
+        if (input) { input.checked = true; onPillChange(sec.prefix, i, val); }
+      }
+    });
+  });
+
+  document.getElementById('fin-problemas').value    = r.problemas || '';
+  document.getElementById('fin-oportunidades').value = r.oportunidades || '';
+
+  // Fotos (si quedaron con base64 local; las que ya subieron a URL no se pueden recargar al input)
+  window.currentPhotos = {};
+  if (r.fotos) {
+    Object.entries(r.fotos).forEach(([key, foto]) => {
+      const src = foto.data || foto.base64 || foto.url;
+      if (!src) return;
+      window.currentPhotos[key] = { data: src, lat: foto.lat, lng: foto.lng, ts: foto.ts };
+      const preview = document.getElementById(`p_${key}`);
+      const trigger = document.getElementById(`ft-${key}`);
+      const rmBtn   = document.getElementById(`rm-${key}`);
+      if (preview) { preview.src = src; preview.style.display = 'block'; }
+      if (trigger) trigger.classList.add('has-photo');
+      if (rmBtn) rmBtn.style.display = 'flex';
+    });
+  }
+
+  switchTab('t-inicio', document.querySelector('[data-tab="t-inicio"]'));
+  showToast(`Editando ${r.folio} — guarda para actualizar los cambios`, 'warning');
+}
+
 async function handleGuardar() {
   closeGuardarModal();
-  const confirmBtn = document.getElementById('btn-confirm-guardar');
-  // Mostrar spinner en el botón de la barra
+  showSavingOverlay();
+  // Bloquea también el botón de la barra mientras se procesa
   const saveBtn = document.querySelector('.tb-btn.save-btn');
-  if (saveBtn) { saveBtn.innerHTML = '<span class="spinner" style="border-top-color:#86efac;"></span>'; saveBtn.disabled = true; }
+  if (saveBtn) { saveBtn.disabled = true; }
+
+  const isEdit = !!window.editingDocId;
 
   try {
     const formData  = new FormData(document.getElementById('certForm'));
@@ -1183,6 +1492,7 @@ async function handleGuardar() {
     // ── Construir documento ──
     const record = {
       folio, inspector, inspector_id: inspectorId,
+      created_by:    window.certUID,
       brigada:       document.getElementById('equipoName').value,
       lugar_tramo:   document.getElementById('targetFolder').value,
       tipo:          document.getElementById('tipoInspeccion').value,
@@ -1197,19 +1507,52 @@ async function handleGuardar() {
       if (!(v instanceof File) && !record[k]) record[k] = v;
     });
 
-    await window.certCloud.addDoc(
-      window.certCloud.collection(window.certCloud.db, 'cert_registros'), record
-    );
+    // Firestore ya tiene persistencia offline habilitada (enableIndexedDbPersistence):
+    // si no hay conexión, esta escritura queda en caché local y se sincroniza sola
+    // al recuperar señal — addDoc()/updateDoc() resuelven igual, de forma optimista.
+    let docId;
+    if (isEdit) {
+      docId = window.editingDocId;
+      await window.certCloud.updateDoc(
+        window.certCloud.doc(window.certCloud.db, 'cert_registros', docId), record
+      );
+    } else {
+      const docRef = await window.certCloud.addDoc(
+        window.certCloud.collection(window.certCloud.db, 'cert_registros'), record
+      );
+      docId = docRef.id;
+    }
+
+    // Guardar/actualizar en la lista de registros editables de esta sesión
+    const existing = window.sessionRecords.find(r => r.id === docId);
+    if (existing) existing.record = record;
+    else window.sessionRecords.unshift({ id: docId, folio, record });
+    renderSessionRecordsList();
+    window.editingDocId = null;
 
     localStorage.removeItem('cert_draft_active');
-    showToast('Registro guardado ✓ · Iniciando nuevo tramo…', 'success');
 
-    // ── Reiniciar formulario conservando inspector ──
-    setTimeout(() => resetForNewTramo(inspector, inspectorId), 1400);
+    const successMsg = isEdit ? 'Registro actualizado' : 'Registro guardado';
+    if (navigator.onLine) {
+      setSavingOverlayResult('success', '✅', successMsg + ' y enviado',
+        'Se sincronizó correctamente con Firebase.');
+      showToast(successMsg + ' ✓ · Iniciando nuevo tramo…', 'success');
+    } else {
+      setSavingOverlayResult('warning', '📴', successMsg + ' sin conexión',
+        'El registro quedó guardado en este dispositivo. Se enviará automáticamente en cuanto recuperes señal — no cierres la app hasta ver que se sincronice.');
+      showToast('Sin conexión: guardado localmente', 'warning');
+    }
+
+    // ── Reiniciar formulario conservando inspector (después de mostrar el resultado) ──
+    setTimeout(() => {
+      hideSavingOverlay();
+      resetForNewTramo(inspector, inspectorId);
+    }, 2200);
 
   } catch(e) {
     console.error(e);
-    if (saveBtn) { saveBtn.innerHTML = '💾 Guardar Registro'; saveBtn.disabled = false; }
+    hideSavingOverlay();
+    if (saveBtn) { saveBtn.disabled = false; }
     showToast('Error al guardar. Verifica conexión.', 'error');
   }
 }
@@ -1261,7 +1604,7 @@ async function resetForNewTramo(inspectorName, inspectorId) {
 
   // Restaurar botón barra
   const saveBtn = document.querySelector('.tb-btn.save-btn');
-  if (saveBtn) { saveBtn.innerHTML = '💾 Guardar Registro'; saveBtn.disabled = false; }
+  if (saveBtn) { saveBtn.innerHTML = '<span class="tb-icon">💾</span>Guardar'; saveBtn.disabled = false; }
 
   showToast('¡Listo para nuevo tramo!', 'success');
 }
@@ -1416,13 +1759,18 @@ function restoreDraft() {
 function doLogout() {
   closeSalirModal();
   localStorage.clear();
-  location.reload();
+  if (window.doRealLogout) window.doRealLogout();
+  else location.reload();
 }
 
 /* ─────────────────────────────────────────
    UTILIDADES UI
 ───────────────────────────────────────── */
 function autoResize(el) { el.style.height='auto'; el.style.height=el.scrollHeight+'px'; }
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
 
 let toastTimer;
 function showToast(msg, type='') {
