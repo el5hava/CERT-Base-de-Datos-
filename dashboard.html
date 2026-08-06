@@ -17,12 +17,12 @@
   ═══════════════════════════════════════════ -->
   <script type="module">
     import { initializeApp }   from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getFirestore, collection, doc, addDoc, setDoc, getDoc, getDocs,
+    import { getFirestore, collection, doc, addDoc, setDoc, deleteDoc, getDoc, getDocs,
              onSnapshot, runTransaction, increment, serverTimestamp }
       from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
     import { getStorage, ref, uploadString, getDownloadURL }
       from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
-    import { getAuth, signInAnonymously, onAuthStateChanged }
+    import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged }
       from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
     const firebaseConfig = {
@@ -60,13 +60,90 @@
     }
 
     window.certCloud = { db, storage, auth, collection, addDoc, getDocs, doc,
-                         reserveFolio, uploadPhoto };
+                         reserveFolio, uploadPhoto, signOut };
     window.allRecords = [];
 
-    signInAnonymously(auth).catch(() => {});
+    /* ── Login con correo/contraseña (cuentas creadas por el admin en Authentication) ── */
+    window.doLogin = async function() {
+      const email = document.getElementById('login-email').value.trim();
+      const pass  = document.getElementById('login-pass').value;
+      const errEl = document.getElementById('login-error');
+      errEl.style.display = 'none';
+      if (!email || !pass) { errEl.textContent = 'Ingresa correo y contraseña.'; errEl.style.display='block'; return; }
+      const btn = document.getElementById('login-btn');
+      btn.disabled = true; btn.textContent = 'Entrando…';
+      try {
+        await signInWithEmailAndPassword(auth, email, pass);
+      } catch (e) {
+        errEl.textContent = 'Correo o contraseña incorrectos.';
+        errEl.style.display = 'block';
+      }
+      btn.disabled = false; btn.textContent = 'Entrar';
+    };
 
-    onAuthStateChanged(auth, user => {
-      if (!user) return;
+    window.doRealLogout = async function() {
+      stopPresence();
+      try { await signOut(auth); } catch(e) {}
+      location.reload();
+    };
+
+    /* ── Presencia: heartbeat + conteo de usuarios activos ── */
+    let presenceTimer = null;
+    let lastPresenceDocs = [];
+    function startPresence(uid, role) {
+      const pRef = doc(db, 'cert_presencia', uid);
+      const beat = () => setDoc(pRef, { rol: role, lastSeen: serverTimestamp() }).catch(()=>{});
+      beat();
+      presenceTimer = setInterval(beat, 25000);
+    }
+    function stopPresence() {
+      if (presenceTimer) { clearInterval(presenceTimer); presenceTimer = null; }
+      if (window.certUID) deleteDoc(doc(db, 'cert_presencia', window.certUID)).catch(()=>{});
+    }
+    function updateActiveCount() {
+      const now = Date.now();
+      const active = lastPresenceDocs.filter(d => {
+        const ts = d.data().lastSeen;
+        return ts && (now - ts.toMillis()) < 70000;
+      }).length;
+      const el = document.getElementById('active-users-count');
+      if (el) el.textContent = active;
+    }
+    setInterval(updateActiveCount, 15000);
+
+    onAuthStateChanged(auth, async user => {
+      const gate = document.getElementById('loginGate');
+      if (!user) {
+        window.certUID = null;
+        window.certRole = null;
+        if (gate) gate.style.display = 'flex';
+        return;
+      }
+      let role = null;
+      try {
+        const roleSnap = await getDoc(doc(db, 'usuarios', user.uid));
+        role = roleSnap.exists() ? roleSnap.data().rol : null;
+      } catch(e) {}
+      if (role !== 'inspector' && role !== 'admin') {
+        const errEl = document.getElementById('login-error');
+        if (errEl) { errEl.textContent = 'Esta cuenta no tiene un rol asignado. Contacta al administrador.'; errEl.style.display = 'block'; }
+        await signOut(auth);
+        return;
+      }
+      window.certUID = user.uid;
+      window.certRole = role;
+      if (gate) gate.style.display = 'none';
+
+      startPresence(user.uid, role);
+      onSnapshot(collection(db, 'cert_presencia'), snap => {
+        lastPresenceDocs = snap.docs;
+        updateActiveCount();
+      });
+
+      // Solo el rol admin puede publicar proyectos/eventos en el mapa
+      const addBtn = document.getElementById('btn-add-action');
+      if (addBtn) addBtn.style.display = role === 'admin' ? '' : 'none';
+
       const badge = document.getElementById('conn-badge');
       if (badge) { badge.textContent = 'EN LÍNEA'; badge.className = 'conn-badge online'; }
 
@@ -344,9 +421,58 @@
       letter-spacing: .06em; transition: background .15s;
     }
     .layer-toggle:hover { background: #1e293b; color: #e2e8f0; }
+
+    /* ══════════════════════════════════════
+       LOGIN GATE
+    ══════════════════════════════════════ */
+    .login-gate {
+      position:fixed; inset:0; z-index:20000;
+      background:var(--ink);
+      display:flex; align-items:center; justify-content:center;
+      padding:16px;
+    }
+    .login-box {
+      background:#fff; color:#0f172a; border-radius:20px;
+      padding:32px 26px; max-width:340px; width:100%;
+    }
+    .login-box h1 {
+      font-family:var(--mono); font-size:14px; font-weight:700;
+      text-transform:uppercase; letter-spacing:.06em; margin-bottom:4px;
+    }
+    .login-box p { font-size:12px; color:#64748b; margin-bottom:18px; }
+    .login-box label {
+      display:block; font-size:10px; font-weight:700; color:#64748b;
+      text-transform:uppercase; letter-spacing:.07em; margin-top:10px; margin-bottom:4px;
+    }
+    .login-box input {
+      width:100%; background:#f8fafc; border:1.5px solid #e2e8f0; border-radius:10px;
+      padding:10px 12px; font-size:14px; color:#0f172a;
+    }
+    .login-error { font-size:11px; color:#dc2626; font-weight:600; margin-top:8px; display:none; }
+    .login-btn {
+      width:100%; margin-top:16px; padding:13px;
+      background:#0f172a; color:#e2e8f0; border:none; border-radius:12px;
+      font-family:var(--mono); font-size:10px; font-weight:700;
+      text-transform:uppercase; letter-spacing:.07em; cursor:pointer;
+    }
+    .login-btn:disabled { opacity:.6; cursor:default; }
   </style>
 </head>
 <body style="display:flex; flex-direction:column; height:100dvh;">
+
+<!-- ════ LOGIN GATE ═══ -->
+<div id="loginGate" class="login-gate">
+  <div class="login-box">
+    <h1>CERT Maps 3.0</h1>
+    <p>Ingresa con tu cuenta asignada por el administrador.</p>
+    <label for="login-email">Correo</label>
+    <input type="email" id="login-email" placeholder="admin@tucorreo.com" autocomplete="username">
+    <label for="login-pass">Contraseña</label>
+    <input type="password" id="login-pass" placeholder="••••••••" autocomplete="current-password">
+    <div class="login-error" id="login-error"></div>
+    <button type="button" class="login-btn" id="login-btn" onclick="doLogin()">Entrar</button>
+  </div>
+</div>
 
 <!-- ════ TOP NAV ═══ -->
 <nav class="topnav noscroll">
@@ -368,9 +494,15 @@
       <div style="font-family:var(--mono); font-size:16px; font-weight:700; color:#60a5fa; margin-top:2px;">MAPS 3.0</div>
       <div style="font-size:11px; color:#64748b; font-weight:500; margin-top:1px;" id="sidebar-subtitle">Consolidado General</div>
 
-      <div style="display:flex; align-items:center; justify-content:space-between; margin-top:10px;">
-        <span class="conn-badge pending" id="conn-badge">CONECTANDO</span>
-        <button onclick="exportExcel()" style="background:#1e293b; border:1px solid #334155; border-radius:8px; padding:5px 10px; font-family:var(--mono); font-size:9px; font-weight:700; color:#94a3b8; cursor:pointer; text-transform:uppercase; letter-spacing:.05em;">📊 Excel</button>
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-top:10px; gap:6px; flex-wrap:wrap;">
+        <div style="display:flex; align-items:center; gap:6px;">
+          <span class="conn-badge pending" id="conn-badge">CONECTANDO</span>
+          <span class="stat-pill">🟢 <span id="active-users-count">0</span> en línea</span>
+        </div>
+        <div style="display:flex; gap:6px;">
+          <button onclick="exportExcel()" style="background:#1e293b; border:1px solid #334155; border-radius:8px; padding:5px 10px; font-family:var(--mono); font-size:9px; font-weight:700; color:#94a3b8; cursor:pointer; text-transform:uppercase; letter-spacing:.05em;">📊 Excel</button>
+          <button onclick="window.doRealLogout && window.doRealLogout()" style="background:rgba(220,38,38,.2); border:1px solid rgba(220,38,38,.4); border-radius:8px; padding:5px 10px; font-family:var(--mono); font-size:9px; font-weight:700; color:#fca5a5; cursor:pointer; text-transform:uppercase; letter-spacing:.05em;">🚪 Salir</button>
+        </div>
       </div>
 
       <div class="stat-row">
@@ -512,6 +644,13 @@ const SECCIONES = [
 ];
 
 /* ═══════════════════════════════════════════
+   ESCAPE HTML – evita XSS con datos de Firestore
+═══════════════════════════════════════════ */
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* ═══════════════════════════════════════════
    ESTADO
 ═══════════════════════════════════════════ */
 let currentTab      = 'all';
@@ -578,7 +717,7 @@ function refreshCounters() {
   const prevFech = selFech.value;
 
   selInsp.innerHTML = '<option value="">Todos los inspectores</option>' +
-    [...inspSet].sort().map(i => `<option value="${i}" ${i===prevInsp?'selected':''}>${i}</option>`).join('');
+    [...inspSet].sort().map(i => `<option value="${esc(i)}" ${i===prevInsp?'selected':''}>${esc(i)}</option>`).join('');
   selFech.innerHTML = '<option value="">Todas las fechas</option>' +
     [...fechaSet].sort().reverse().map(f => `<option value="${f}" ${f===prevFech?'selected':''}>${f}</option>`).join('');
 }
@@ -649,10 +788,11 @@ function updateSidebarContent() {
       html += `<div style="background:#1e293b;border-radius:12px;padding:20px;text-align:center;font-size:12px;color:#475569;font-weight:500;">No hay proyectos agendados.</div>`;
     } else {
       eventos.forEach(ev => {
-        html += `<div class="ev-card" onclick="centerOn(${ev.lat},${ev.lng})">
-          <div class="ev-title">${ev.gestion_titulo || 'Evento sin título'}</div>
-          <div class="ev-meta">${ev.gestion_tipo || '-'}</div>
-          <div class="ev-meta" style="margin-top:4px;">📅 ${ev.gestion_fecha||'Sin fecha'} · ⏰ ${ev.gestion_hora||'--:--'}</div>
+        const lat = Number(ev.lat) || 0, lng = Number(ev.lng) || 0;
+        html += `<div class="ev-card" data-lat="${lat}" data-lng="${lng}">
+          <div class="ev-title">${esc(ev.gestion_titulo || 'Evento sin título')}</div>
+          <div class="ev-meta">${esc(ev.gestion_tipo || '-')}</div>
+          <div class="ev-meta" style="margin-top:4px;">📅 ${esc(ev.gestion_fecha||'Sin fecha')} · ⏰ ${esc(ev.gestion_hora||'--:--')}</div>
         </div>`;
       });
     }
@@ -764,21 +904,21 @@ function renderMapMarkers() {
     }).addTo(map);
 
     // Tooltip
-    const tipTitle = isAdmin ? `⭐ ${record.gestion_titulo||'Proyecto'}` : (record.lugar_tramo || 'Punto auditado');
+    const tipTitle = isAdmin ? `⭐ ${esc(record.gestion_titulo||'Proyecto')}` : esc(record.lugar_tramo || 'Punto auditado');
     let tipBody = `<strong style="font-size:11px;text-transform:uppercase;border-bottom:1px solid #334155;display:block;padding-bottom:6px;margin-bottom:6px;">${tipTitle}</strong>`;
     if (isAdmin) {
-      tipBody += `<span style="font-size:10px;color:#fbbf24;">📅 ${record.gestion_fecha||'Sin agendar'}</span>`;
+      tipBody += `<span style="font-size:10px;color:#fbbf24;">📅 ${esc(record.gestion_fecha||'Sin agendar')}</span>`;
     } else {
       const top = [...grav.r.M.slice(0,2), ...grav.r.R.slice(0,1)];
       if (top.length > 0) {
-        top.forEach(f => { tipBody += `<div style="font-size:10px;margin:2px 0;">${grav.r.M.includes(f)?'🔴':'🟡'} ${f.item}</div>`; });
+        top.forEach(f => { tipBody += `<div style="font-size:10px;margin:2px 0;">${grav.r.M.includes(f)?'🔴':'🟡'} ${esc(f.item)}</div>`; });
         const more = grav.r.M.length + grav.r.R.length - top.length;
         if (more > 0) tipBody += `<div style="font-size:9px;color:#94a3b8;margin-top:3px;">+${more} más…</div>`;
       } else {
         tipBody += `<span style="font-size:10px;color:#4ade80;">✅ Zona Estable</span>`;
       }
     }
-    tipBody += `<div style="font-size:9px;color:#475569;margin-top:5px;font-family:monospace;">${record.inspector||'Admin'} · ${record.fecha_captura||''}</div>`;
+    tipBody += `<div style="font-size:9px;color:#475569;margin-top:5px;font-family:monospace;">${esc(record.inspector||'Admin')} · ${esc(record.fecha_captura||'')}</div>`;
 
     marker.bindTooltip(tipBody, { direction:'top', offset:[0,-10], className:'ctip' });
     marker.on('click', () => openDetailModal(record));
@@ -789,6 +929,12 @@ function renderMapMarkers() {
 function centerOn(lat, lng) {
   map.setView([lat, lng], 17, { animate:true });
 }
+
+document.addEventListener('click', e => {
+  const card = e.target.closest('.ev-card');
+  if (!card) return;
+  centerOn(Number(card.dataset.lat)||0, Number(card.dataset.lng)||0);
+});
 
 /* ═══════════════════════════════════════════
    MODAL DE DETALLE
@@ -849,7 +995,7 @@ function openDetailModal(data) {
           ${field('📱 WhatsApp', data.gestion_wa||'No registrado',  '#2563eb')}
           ${field('Dependencias',(data.gestion_auths&&data.gestion_auths.length)?data.gestion_auths.join(' · '):'Ninguna','#991b1b')}
         </div>
-        ${data.gestion_desc?`<div style="margin-top:12px;font-size:13px;color:#374151;background:#fff;padding:12px;border-radius:8px;border:1px solid #fde68a;line-height:1.7;">${data.gestion_desc}</div>`:''}
+        ${data.gestion_desc?`<div style="margin-top:12px;font-size:13px;color:#374151;background:#fff;padding:12px;border-radius:8px;border:1px solid #fde68a;line-height:1.7;">${esc(data.gestion_desc)}</div>`:''}
       </div>
       ${buildFotoSection(data)}`;
 
@@ -885,11 +1031,11 @@ function openDetailModal(data) {
         </div>
         <div class="detail-sec">
           <div class="detail-sec-title" style="color:#dc2626;">🔴 Problemáticas</div>
-          <div style="font-size:13px;color:#374151;line-height:1.7;">${data.problemas||'<span style="color:#94a3b8;">Sin comentarios registrados.</span>'}</div>
+          <div style="font-size:13px;color:#374151;line-height:1.7;">${data.problemas?esc(data.problemas):'<span style="color:#94a3b8;">Sin comentarios registrados.</span>'}</div>
         </div>
         <div class="detail-sec">
           <div class="detail-sec-title" style="color:#16a34a;">🟢 Propuestas</div>
-          <div style="font-size:13px;color:#374151;line-height:1.7;">${data.oportunidades||'<span style="color:#94a3b8;">Sin propuestas registradas.</span>'}</div>
+          <div style="font-size:13px;color:#374151;line-height:1.7;">${data.oportunidades?esc(data.oportunidades):'<span style="color:#94a3b8;">Sin propuestas registradas.</span>'}</div>
         </div>
       </div>`;
   }
@@ -900,8 +1046,8 @@ function openDetailModal(data) {
 /* ── Helpers ── */
 function field(label, value, color='#64748b') {
   return `<div>
-    <div style="font-size:10px;font-weight:700;color:${color};text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px;">${label}</div>
-    <div style="font-size:13px;font-weight:600;color:#0f172a;">${value}</div>
+    <div style="font-size:10px;font-weight:700;color:${color};text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px;">${esc(label)}</div>
+    <div style="font-size:13px;font-weight:600;color:#0f172a;">${esc(value)}</div>
   </div>`;
 }
 function indRow(item, sec, level) {
@@ -942,16 +1088,18 @@ function buildFotoSection(record) {
       .trim();
 
     return `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
-      <div style="position:relative;cursor:zoom-in;" onclick="openFotoViewer('${imgSrc}','${slotLabel}','${lat||''}','${lng||''}','${tsDate||''}','${tsHour||''}','${record.inspector||''}','${record.fecha_captura||''}')">
-        <img src="${imgSrc}" style="width:100%;height:160px;object-fit:cover;display:block;">
+      <div style="position:relative;cursor:zoom-in;" class="foto-viewer-trigger"
+        data-src="${esc(imgSrc)}" data-slot="${esc(slotLabel)}" data-lat="${esc(lat||'')}" data-lng="${esc(lng||'')}"
+        data-fecha="${esc(tsDate||'')}" data-hora="${esc(tsHour||'')}" data-inspector="${esc(record.inspector||'')}" data-fecha-reg="${esc(record.fecha_captura||'')}">
+        <img src="${esc(imgSrc)}" style="width:100%;height:160px;object-fit:cover;display:block;">
         <div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,rgba(0,0,0,.7));padding:8px 10px;">
-          <div style="font-family:var(--mono);font-size:9px;font-weight:700;color:#fff;text-transform:uppercase;">${slotLabel}</div>
+          <div style="font-family:var(--mono);font-size:9px;font-weight:700;color:#fff;text-transform:uppercase;">${esc(slotLabel)}</div>
         </div>
         <div style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,.6);border-radius:6px;padding:2px 6px;font-family:var(--mono);font-size:8px;color:#fff;">🔍 ver</div>
       </div>
       <div style="padding:8px 10px;background:#f8fafc;">
-        ${lat?`<div style="font-family:var(--mono);font-size:9px;color:#2563eb;margin-bottom:2px;">📍 ${lat}, ${lng}</div>`:'<div style="font-size:9px;color:#94a3b8;margin-bottom:2px;">📍 Sin GPS</div>'}
-        ${tsDate?`<div style="font-family:var(--mono);font-size:9px;color:#64748b;">📅 ${tsDate} · ⏰ ${tsHour}</div>`:''}
+        ${lat?`<div style="font-family:var(--mono);font-size:9px;color:#2563eb;margin-bottom:2px;">📍 ${esc(lat)}, ${esc(lng)}</div>`:'<div style="font-size:9px;color:#94a3b8;margin-bottom:2px;">📍 Sin GPS</div>'}
+        ${tsDate?`<div style="font-family:var(--mono);font-size:9px;color:#64748b;">📅 ${esc(tsDate)} · ⏰ ${esc(tsHour)}</div>`:''}
       </div>
     </div>`;
   }).join('');
@@ -974,18 +1122,26 @@ function openFotoViewer(src, slot, lat, lng, fecha, hora, inspector, fechaReg) {
 
   overlay.innerHTML = `
     <button onclick="document.getElementById('foto-viewer').remove()" style="position:absolute;top:16px;right:16px;background:rgba(255,255,255,.12);border:none;border-radius:50%;width:38px;height:38px;color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;">✕</button>
-    <img src="${src}" style="max-width:100%;max-height:75dvh;object-fit:contain;border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,.8);" onclick="event.stopPropagation()">
+    <img src="${esc(src)}" style="max-width:100%;max-height:75dvh;object-fit:contain;border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,.8);" onclick="event.stopPropagation()">
     <div style="margin-top:14px;display:flex;flex-wrap:wrap;gap:8px;justify-content:center;">
-      ${slot?`<span style="background:#1e293b;color:#94a3b8;font-family:monospace;font-size:10px;font-weight:700;padding:5px 12px;border-radius:99px;text-transform:uppercase;">${slot}</span>`:''}
-      ${fecha?`<span style="background:#1e293b;color:#60a5fa;font-family:monospace;font-size:10px;font-weight:700;padding:5px 12px;border-radius:99px;">📅 ${fecha} · ⏰ ${hora}</span>`:''}
-      ${lat?`<span style="background:#1e293b;color:#34d399;font-family:monospace;font-size:10px;font-weight:700;padding:5px 12px;border-radius:99px;">📍 ${lat}, ${lng}</span>`:''}
-      ${inspector?`<span style="background:#1e293b;color:#a78bfa;font-family:monospace;font-size:10px;font-weight:700;padding:5px 12px;border-radius:99px;">👤 ${inspector}</span>`:''}
-      ${fechaReg&&fechaReg!==fecha?`<span style="background:#1e293b;color:#94a3b8;font-family:monospace;font-size:10px;font-weight:700;padding:5px 12px;border-radius:99px;">Registro: ${fechaReg}</span>`:''}
+      ${slot?`<span style="background:#1e293b;color:#94a3b8;font-family:monospace;font-size:10px;font-weight:700;padding:5px 12px;border-radius:99px;text-transform:uppercase;">${esc(slot)}</span>`:''}
+      ${fecha?`<span style="background:#1e293b;color:#60a5fa;font-family:monospace;font-size:10px;font-weight:700;padding:5px 12px;border-radius:99px;">📅 ${esc(fecha)} · ⏰ ${esc(hora)}</span>`:''}
+      ${lat?`<span style="background:#1e293b;color:#34d399;font-family:monospace;font-size:10px;font-weight:700;padding:5px 12px;border-radius:99px;">📍 ${esc(lat)}, ${esc(lng)}</span>`:''}
+      ${inspector?`<span style="background:#1e293b;color:#a78bfa;font-family:monospace;font-size:10px;font-weight:700;padding:5px 12px;border-radius:99px;">👤 ${esc(inspector)}</span>`:''}
+      ${fechaReg&&fechaReg!==fecha?`<span style="background:#1e293b;color:#94a3b8;font-family:monospace;font-size:10px;font-weight:700;padding:5px 12px;border-radius:99px;">Registro: ${esc(fechaReg)}</span>`:''}
     </div>
-    <a href="${src}" target="_blank" onclick="event.stopPropagation()" style="margin-top:10px;font-family:monospace;font-size:10px;color:#64748b;text-decoration:none;">↗ Abrir en nueva pestaña</a>`;
+    <a href="${esc(src)}" target="_blank" onclick="event.stopPropagation()" style="margin-top:10px;font-family:monospace;font-size:10px;color:#64748b;text-decoration:none;">↗ Abrir en nueva pestaña</a>`;
 
   document.body.appendChild(overlay);
 }
+
+/* Delegación de clics para las miniaturas de fotos (evita construir JS con datos de usuario) */
+document.addEventListener('click', e => {
+  const trigger = e.target.closest('.foto-viewer-trigger');
+  if (!trigger) return;
+  const d = trigger.dataset;
+  openFotoViewer(d.src, d.slot, d.lat, d.lng, d.fecha, d.hora, d.inspector, d.fechaReg);
+});
 
 /* ═══════════════════════════════════════════
    MODO AGENDA – click en mapa
@@ -1044,6 +1200,7 @@ function previewAdminPhoto(input) {
 }
 
 async function saveAdminEvent() {
+  if (window.certRole !== 'admin') { showToast('Solo el administrador puede publicar eventos', 'err'); return; }
   const titulo = document.getElementById('c-titulo').value.trim();
   if (!titulo) { showToast('El título es obligatorio', 'err'); return; }
   if (!tempCoords) { showToast('Sin coordenadas GPS', 'err'); return; }
@@ -1071,6 +1228,7 @@ async function saveAdminEvent() {
 
     const record = {
       folio,
+      created_by:        window.certUID,
       tipo:              'admin_gestion',
       tipo_inspeccion:   'admin_gestion',
       inspector:         'Administración CERT',
