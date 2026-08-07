@@ -16,7 +16,7 @@
   ═══════════════════════════════════════════ -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getFirestore, collection, doc, addDoc, setDoc, updateDoc, deleteDoc, getDoc, getDocs, onSnapshot, runTransaction, increment, enableIndexedDbPersistence, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    import { getFirestore, collection, doc, addDoc, setDoc, updateDoc, deleteDoc, getDoc, getDocs, query, where, onSnapshot, runTransaction, increment, enableIndexedDbPersistence, enableNetwork, waitForPendingWrites, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
     import { getStorage, ref, uploadString, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
     import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
@@ -50,8 +50,15 @@
       return `CERT-${dateStr}-${inspectorId}-${pad}`;
     }
 
+    /* Firebase Storage no está habilitado en el plan actual del proyecto (Spark).
+       Mientras siga así, no tiene caso intentar la subida real (siempre falla y
+       solo agrega espera): las fotos van directo como base64 dentro del registro.
+       Cuando actives Storage, cambia esto a true. */
+    const STORAGE_ENABLED = false;
+
     /* ── Subir foto a Storage, devolver URL ─────────────────── */
     async function uploadPhoto(base64, path) {
+      if (!STORAGE_ENABLED) throw new Error('Storage deshabilitado');
       const storageRef = ref(storage, path);
       await uploadString(storageRef, base64, 'data_url');
       return await getDownloadURL(storageRef);
@@ -71,7 +78,21 @@
       return bdata;
     }
 
-    window.certCloud = { db, storage, auth, collection, doc, addDoc, updateDoc, getDocs, uploadPhoto, reserveFolio, resolveBrigadista, signOut };
+    window.certCloud = { db, storage, auth, collection, doc, addDoc, updateDoc, getDocs, query, where, uploadPhoto, reserveFolio, resolveBrigadista, signOut };
+
+    /* ── Sincronizar ahora: fuerza red y espera a que se vacíe la cola de escrituras pendientes ── */
+    window.syncNow = async function() {
+      const btn = document.getElementById('sync-now-btn');
+      if (btn) { btn.disabled = true; btn.textContent = '⏳ Sincronizando…'; }
+      try {
+        await enableNetwork(db);
+        await waitForPendingWrites(db);
+        showToast('Todo sincronizado con Firebase ✓', 'success');
+      } catch (e) {
+        showToast('No se pudo sincronizar. Revisa tu conexión.', 'error');
+      }
+      if (btn) { btn.disabled = false; btn.textContent = '🔄 Sincronizar ahora'; }
+    };
     window.currentPhotos = {};
     window.currentLat = 0;
     window.currentLng = 0;
@@ -162,6 +183,7 @@
         window.globalRecords = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         const pending = snap.docs.filter(d => d.metadata.hasPendingWrites).length;
         const pill = document.getElementById('pending-pill');
+        const syncBtn = document.getElementById('sync-now-btn');
         if (pill) {
           if (pending > 0) {
             pill.style.display = '';
@@ -170,6 +192,7 @@
             pill.style.display = 'none';
           }
         }
+        if (syncBtn) syncBtn.style.display = pending > 0 ? '' : 'none';
       });
       setConnectionStatus(true);
     });
@@ -408,6 +431,9 @@
     .foto-trigger:hover { border-color:var(--blue); background:#eff6ff; }
     .foto-trigger.has-photo {
       border-style:solid; border-color:#16a34a; background:#f0fdf4;
+    }
+    .foto-trigger.compressing {
+      border-style:solid; border-color:#d97706; background:#fffbeb; opacity:.75;
     }
     .foto-icon { font-size:18px; }
     .foto-lbl {
@@ -693,6 +719,8 @@
       <span class="sync-pill pending-pill" id="pending-pill" style="display:none;">⏳ <span id="pending-counter">0</span> pendiente(s) de enviar</span>
     </div>
     <div class="topbar-actions">
+      <button class="tb-btn" id="sync-now-btn" onclick="syncNow()" style="display:none; background:rgba(217,119,6,.3); color:#fde68a;"><span class="tb-icon">🔄</span>Sincronizar</button>
+      <button class="tb-btn" onclick="openHistoryModal()"><span class="tb-icon">🕘</span>Historial</button>
       <button class="tb-btn save-btn" onclick="openGuardarModal()"><span class="tb-icon">💾</span>Guardar</button>
       <button class="tb-btn" onclick="openManual()"><span class="tb-icon">📖</span>Guía</button>
       <button class="tb-btn danger" onclick="openSalirModal()"><span class="tb-icon">🚪</span>Salir</button>
@@ -958,6 +986,21 @@
   </div>
 </div>
 
+<!-- ════ MODAL HISTORIAL ═══ -->
+<div id="historyModal" class="modal-overlay">
+  <div class="modal-box">
+    <div style="text-align:center; margin-bottom:14px;">
+      <div style="font-size:36px; margin-bottom:8px;">🕘</div>
+      <div class="modal-title" style="margin-bottom:0;">Historial de Registros</div>
+      <p style="font-size:12px; color:var(--muted); margin-top:6px;">Tus últimos 10 registros. Puedes editarlos aunque hayas cerrado sesión.</p>
+    </div>
+    <div id="history-list" style="display:flex; flex-direction:column; gap:8px; max-height:50vh; overflow-y:auto; margin-bottom:16px;">
+      <p style="font-size:12px; color:var(--muted); text-align:center; padding:20px;">Cargando…</p>
+    </div>
+    <button class="modal-btn ghost" onclick="closeHistoryModal()">Cerrar</button>
+  </div>
+</div>
+
 <!-- ════ MODAL MANUAL ═══ -->
 <div id="manualModal" class="modal-overlay">
   <div class="modal-box">
@@ -1210,51 +1253,72 @@ async function assignInspectorID() {
    – comprime a MAX 800px, JPEG 0.65
    – vincula GPS al momento de la foto
 ───────────────────────────────────────── */
-function processImage(input, id) {
+/* Comprime una imagen a MAX 800px, JPEG 0.65. Usa createImageBitmap
+   (decodificación acelerada, no bloquea el hilo principal) cuando está
+   disponible; si no, cae al método clásico con <img>. */
+async function compressToJpeg(file, MAX = 800, quality = 0.65) {
+  let w, h, drawSource;
+  if (window.createImageBitmap) {
+    try {
+      const bitmap = await createImageBitmap(file);
+      w = bitmap.width; h = bitmap.height;
+      drawSource = bitmap;
+    } catch (e) { drawSource = null; }
+  }
+  if (!drawSource) {
+    drawSource = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = e => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = e.target.result;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+    w = drawSource.width; h = drawSource.height;
+  }
+  if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
+  if (h > MAX && h > w) { w = Math.round(w * MAX / h); h = MAX; }
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  canvas.getContext('2d').drawImage(drawSource, 0, 0, w, h);
+  if (drawSource.close) drawSource.close();
+  return canvas.toDataURL('image/jpeg', quality);
+}
+
+async function processImage(input, id) {
   const file = input.files[0];
   if (!file) return;
-  const reader = new FileReader();
-  reader.readAsDataURL(file);
-  reader.onload = e => {
-    const img = new Image();
-    img.src = e.target.result;
-    img.onload = () => {
-      const MAX = 800;
-      let w = img.width, h = img.height;
-      if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
-      if (h > MAX && h > w) { w = Math.round(w * MAX / h); h = MAX; }
-      const canvas = document.createElement('canvas');
-      canvas.width = w; canvas.height = h;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, w, h);
-      const b64 = canvas.toDataURL('image/jpeg', 0.65);
+  const trigger = document.getElementById(`ft-${id}`);
+  if (trigger) trigger.classList.add('compressing');
 
-      // Mostrar preview
-      const preview = document.getElementById(`p_${id}`);
-      const trigger = document.getElementById(`ft-${id}`);
-      const rmBtn   = document.getElementById(`rm-${id}`);
-      if (preview) {
-        preview.src = b64;
-        preview.style.display = 'block';
-      }
-      if (trigger) trigger.classList.add('has-photo');
-      if (rmBtn) rmBtn.style.display = 'flex';
+  const b64 = await compressToJpeg(file);
 
-      // Vincular GPS
-      const lat = window.currentLat || 0;
-      const lng = window.currentLng || 0;
-      window.currentPhotos[id] = { data: b64, lat, lng, ts: new Date().toISOString() };
+  // Mostrar preview
+  const preview = document.getElementById(`p_${id}`);
+  const rmBtn   = document.getElementById(`rm-${id}`);
+  if (preview) {
+    preview.src = b64;
+    preview.style.display = 'block';
+  }
+  if (trigger) { trigger.classList.remove('compressing'); trigger.classList.add('has-photo'); }
+  if (rmBtn) rmBtn.style.display = 'flex';
 
-      // Mostrar coords en trigger si tiene GPS
-      if (lat !== 0 && trigger) {
-        let gpsDiv = trigger.querySelector('.foto-gps');
-        if (!gpsDiv) { gpsDiv = document.createElement('div'); gpsDiv.className='foto-gps'; trigger.appendChild(gpsDiv); }
-        gpsDiv.textContent = `${lat.toFixed(4)},${lng.toFixed(4)}`;
-      }
+  // Vincular GPS
+  const lat = window.currentLat || 0;
+  const lng = window.currentLng || 0;
+  window.currentPhotos[id] = { data: b64, lat, lng, ts: new Date().toISOString() };
 
-      showToast('Foto comprimida y vinculada','success');
-    };
-  };
+  // Mostrar coords en trigger si tiene GPS
+  if (lat !== 0 && trigger) {
+    let gpsDiv = trigger.querySelector('.foto-gps');
+    if (!gpsDiv) { gpsDiv = document.createElement('div'); gpsDiv.className='foto-gps'; trigger.appendChild(gpsDiv); }
+    gpsDiv.textContent = `${lat.toFixed(4)},${lng.toFixed(4)}`;
+  }
+
+  showToast('Foto comprimida y vinculada','success');
 }
 
 function removePhoto(id) {
@@ -1406,7 +1470,10 @@ function renderSessionRecordsList() {
 function editSessionRecord(id) {
   const entry = window.sessionRecords.find(r => r.id === id);
   if (!entry) return;
-  const r = entry.record;
+  loadRecordIntoForm(id, entry.record);
+}
+
+function loadRecordIntoForm(id, r) {
   window.editingDocId = id;
 
   document.getElementById('inspectorName').value = r.inspector || '';
@@ -1458,6 +1525,61 @@ function editSessionRecord(id) {
 
   switchTab('t-inicio', document.querySelector('[data-tab="t-inicio"]'));
   showToast(`Editando ${r.folio} — guarda para actualizar los cambios`, 'warning');
+}
+
+/* ─────────────────────────────────────────
+   HISTORIAL – últimos 10 registros propios,
+   editables aunque ya no sea la misma sesión
+───────────────────────────────────────── */
+window.historyRecords = [];
+
+async function openHistoryModal() {
+  document.getElementById('historyModal').classList.add('open');
+  const list = document.getElementById('history-list');
+  list.innerHTML = '<p style="font-size:12px; color:var(--muted); text-align:center; padding:20px;">Cargando…</p>';
+
+  if (!window.certUID) return;
+  try {
+    const q = window.certCloud.query(
+      window.certCloud.collection(window.certCloud.db, 'cert_registros'),
+      window.certCloud.where('created_by', '==', window.certUID)
+    );
+    const snap = await window.certCloud.getDocs(q);
+    const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    all.sort((a, b) => (b.timestamp_utc || '').localeCompare(a.timestamp_utc || ''));
+    window.historyRecords = all.slice(0, 10);
+    renderHistoryList();
+  } catch (e) {
+    list.innerHTML = '<p style="font-size:12px; color:var(--red); text-align:center; padding:20px;">No se pudo cargar el historial. Verifica tu conexión.</p>';
+  }
+}
+
+function renderHistoryList() {
+  const list = document.getElementById('history-list');
+  if (!window.historyRecords.length) {
+    list.innerHTML = '<p style="font-size:12px; color:var(--muted); text-align:center; padding:20px;">Aún no tienes registros guardados.</p>';
+    return;
+  }
+  list.innerHTML = window.historyRecords.map(r => `
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 10px; background:#f8fafc; border:1px solid var(--line); border-radius:10px;">
+      <div style="min-width:0;">
+        <div style="font-family:var(--mono); font-size:11px; font-weight:700;">${esc(r.folio || '')}</div>
+        <div style="font-size:12px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(r.lugar_tramo || '')}</div>
+        <div style="font-size:10px; color:var(--muted);">${esc(r.fecha_captura || '')}</div>
+      </div>
+      <button type="button" class="tb-btn" style="background:#1e293b; color:#e2e8f0; flex-shrink:0;" onclick="editHistoryRecord('${r.id}')">✏️ Editar</button>
+    </div>`).join('');
+}
+
+function editHistoryRecord(id) {
+  const r = window.historyRecords.find(x => x.id === id);
+  if (!r) return;
+  closeHistoryModal();
+  loadRecordIntoForm(id, r);
+}
+
+function closeHistoryModal() {
+  document.getElementById('historyModal').classList.remove('open');
 }
 
 async function handleGuardar() {
