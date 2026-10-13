@@ -331,6 +331,8 @@
     .m-admin:hover { transform: scale(1.2) translateY(-4px); }
     @keyframes pulsered { 0%{box-shadow:0 0 0 0 rgba(239,68,68,.7)} 70%{box-shadow:0 0 0 14px rgba(239,68,68,0)} 100%{box-shadow:0 0 0 0 rgba(239,68,68,0)} }
 
+    /* ── Mapa base oscuro (OSM + filtro) ── */
+    .osm-dark { filter: invert(1) hue-rotate(180deg) brightness(.9) contrast(.9) saturate(.7); }
     /* ── Leaflet tooltip ── */
     .leaflet-tooltip.ctip {
       background: rgba(10,15,30,.96); border: 1px solid #334155;
@@ -669,12 +671,14 @@ let cartoLayer, satelliteLayer, currentLayerMode = 'streets';
 const map = L.map('map', { zoomControl: false }).setView([32.5683, -116.6268], 14);
 L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-cartoLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-  attribution: '&copy; OpenStreetMap &copy; CARTO', maxZoom: 20
+/* OpenStreetMap (sin API key). Se oscurece con filtro CSS (.osm-dark) para mantener el tema oscuro. */
+cartoLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  maxZoom: 19, className: 'osm-dark'
 }).addTo(map);
 
 satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-  attribution: '&copy; Esri', maxZoom: 20
+  attribution: '&copy; Esri', maxZoom: 19
 });
 
 function toggleMapLayer() {
